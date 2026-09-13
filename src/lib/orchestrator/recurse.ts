@@ -1,0 +1,279 @@
+import { db, nowIso, newId } from "@/lib/db";
+import { agents, claims, dispatchAcks } from "@/lib/db/schema";
+import { eq, inArray, gt } from "drizzle-orm";
+import type { GradedClaim, SubmittedClaim } from "./grade";
+import { gradeClaims } from "./grade";
+import type { InvestigationState } from "./investigation";
+import {
+  updateInvestigationWithGraded,
+  shouldRecurse,
+  estimateInvestigationTokens,
+} from "./investigation";
+import { planFollowUps } from "./plan-followups";
+import type { ResearchCommand } from "./run";
+import {
+  MAX_DEPTH,
+  MAX_SOURCES,
+  TOKEN_BUDGET,
+  SOURCING_WINDOW_SECONDS,
+  AGENT_METHOD,
+} from "./run";
+
+const FOLLOWUP_WINDOW_SECONDS = Math.min(60, Math.max(15, Number(process.env["PRIME_FOLLOWUP_WINDOW_SECONDS"] ?? 25)));
+const FOLLOWUP_SLEEP_MS = FOLLOWUP_WINDOW_SECONDS * 1000 + 2000; // dispatch time + buffer
+
+/**
+ * Max follow-up rounds per grading call. Default 1 (was 2): the second round
+ * rarely added independent sources and cost another ~45s plus planning LLM
+ * time. Set PRIME_MAX_FOLLOWUP_ROUNDS=2 to restore the deep path.
+ */
+const MAX_FOLLOWUP_ROUNDS = Math.min(
+  2,
+  Math.max(0, Number(process.env["PRIME_MAX_FOLLOWUP_ROUNDS"] ?? 1)),
+);
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function dispatchToAgent(endpoint: string, command: ResearchCommand): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One follow-up round: broadcast derived tasks to every online agent, wait, collect new claims.
+ * Returns the new claims (if any) and whether to continue.
+ */
+export async function runFollowUpRounds(params: {
+  inquiryId: string;
+  question: string;
+  scope: { category?: string; geography?: string };
+  submitUrl: string;
+  initialGraded: (GradedClaim & { agentId: string })[];
+  initialSubmitted: (SubmittedClaim & { agentId: string })[];
+  initialInvestigation: InvestigationState | null;
+  totalClusters: number;
+  contradictions: number;
+}): Promise<{
+  finalGraded: (GradedClaim & { agentId: string })[];
+  finalInvestigation: InvestigationState | null;
+  roundsRun: number;
+  newClaimsAdded: number;
+}> {
+  let currentGraded = params.initialGraded;
+  let currentSubmitted = params.initialSubmitted;
+  let investigation = params.initialInvestigation;
+  let tokenUsed = investigation ? estimateInvestigationTokens(investigation, currentGraded) : 0;
+  let depth = investigation?.depth ?? 1;
+  let roundsRun = 0;
+  let newClaimsAdded = 0;
+  let seenClaimIds = new Set<string>();
+
+  // Fold round one into the state before deciding anything. This also moves depth
+  // 0 → 1: one round of evidence is in hand. Sync the local counter to the state,
+  // otherwise every shouldRecurse branch that keys on "one round done" is
+  // unreachable and follow-up rounds never fire.
+  if (investigation) {
+    investigation = updateInvestigationWithGraded(investigation, currentGraded);
+    tokenUsed = estimateInvestigationTokens(investigation, currentGraded);
+    depth = investigation.depth ?? depth;
+  }
+
+  // Track which claims we've already graded (by agentId+claim)
+  const claimKey = (c: { agentId: string; claim: string }) => `${c.agentId}:${c.claim}`;
+
+  while (depth < MAX_DEPTH) {
+    const decision = shouldRecurse({
+      graded: currentGraded,
+      depth,
+      tokenUsed,
+      contradictions: params.contradictions,
+      totalClusters: params.totalClusters,
+      maxDepth: MAX_DEPTH,
+      maxSources: MAX_SOURCES,
+      tokenBudget: TOKEN_BUDGET,
+    });
+
+    if (!decision.should) {
+      console.log(`[recurse] stop at depth ${depth}: ${decision.reason}`);
+      break;
+    }
+
+    console.log(`[recurse] depth ${depth} → ${depth + 1}: ${decision.reason}`);
+
+    if (!investigation) {
+      console.log("[recurse] no investigation state, skipping follow-up");
+      break;
+    }
+
+    const tasks = await planFollowUps({
+      question: params.question,
+      graded: currentGraded,
+      state: investigation,
+      contradictions: params.contradictions,
+    });
+    if (tasks.length === 0) {
+      console.log("[recurse] no follow-up tasks derived");
+      break;
+    }
+
+    console.log(`[recurse] derived ${tasks.length} follow-up tasks: ${tasks.map((t) => t.agent + ":" + t.objective.slice(0, 40)).join(" | ")}`);
+
+    // No specialist routing — every online agent receives every follow-up.
+    const allAgents = await db.select().from(agents);
+    const online = allAgents.filter((a) => a.status === "online");
+
+    // Snapshot time before dispatch — new claims after this are follow-up
+    const beforeIds = new Set((await db.select().from(claims).where(eq(claims.inquiryId, params.inquiryId))).map((r) => r.id));
+
+    let dispatchedCount = 0;
+    let taskIndex = 0;
+    while (taskIndex < tasks.length) {
+      const task = tasks[taskIndex]!;
+      const cmd = {
+        command_id: newId("CMD"),
+        inquiry_id: params.inquiryId,
+        question: params.question,
+        scope: params.scope,
+        method: AGENT_METHOD,
+        search_hints: task.searchHints,
+        hypotheses: [
+          {
+            id: `H-FU-${taskIndex + 1}`,
+            label: task.objective.slice(0, 60),
+            demandType: task.objective,
+            entityTypes: [],
+            signals: task.searchHints,
+            searchHints: task.searchHints,
+            whatToVerify: [task.objective],
+          },
+        ],
+        investigation,
+        window_seconds: FOLLOWUP_WINDOW_SECONDS,
+        submit_url: params.submitUrl,
+      } as unknown as ResearchCommand;
+
+      // Broadcast this follow-up to the whole online grid.
+      const results = await Promise.allSettled(
+        online.map((agent) => dispatchToAgent(agent.endpoint, { ...cmd, command_id: newId("CMD") })),
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) dispatchedCount++;
+      }
+      await sleep(300);
+      taskIndex += 1;
+    }
+
+    if (dispatchedCount === 0) {
+      console.log("[recurse] no agents dispatched for follow-ups");
+      break;
+    }
+
+    console.log(`[recurse] dispatched ${dispatchedCount} follow-up commands, waiting ${FOLLOWUP_WINDOW_SECONDS}s for claims...`);
+    await sleep(FOLLOWUP_SLEEP_MS);
+
+    // Collect new claims since beforeIds
+    const allRows = await db.select().from(claims).where(eq(claims.inquiryId, params.inquiryId));
+    const newRows = allRows.filter((r) => !beforeIds.has(r.id));
+
+    if (newRows.length === 0) {
+      console.log("[recurse] no new claims returned from follow-up");
+      // No new evidence → update investigation to mark tasks done and stop (diminishing return)
+      investigation = {
+        ...investigation,
+        tasks: investigation.tasks.map((t) => {
+          const matched = tasks.some((ft) => t.objective.includes(ft.objective.slice(0, 20)));
+          return matched ? { ...t, status: "skipped" as const } : t;
+        }),
+      };
+      break;
+    }
+
+    console.log(`[recurse] got ${newRows.length} new claims from follow-up`);
+
+    // Grade new claims together with existing (full re-grade to keep clustering correct)
+    const agentRowsNew =
+      newRows.length === 0
+        ? []
+        : await db
+            .select()
+            .from(agents)
+            .where(inArray(agents.id, newRows.map((r) => r.agentId)));
+
+    const agentMapNew = Object.fromEntries(agentRowsNew.map((a) => [a.id, { id: a.id, reliability: a.reliability }]));
+
+    // Merge submitted lists: previous + new
+    const newSubmitted: (SubmittedClaim & { agentId: string })[] = newRows.map((row) => ({
+      agentId: row.agentId,
+      company: row.company,
+      claim: row.claim,
+      confidence: row.confidence,
+      evidence: JSON.parse(row.evidenceJson) as SubmittedClaim["evidence"],
+      whyRelevant: (row as { whyRelevant?: string | null }).whyRelevant ?? null,
+      contact: (row as { contact?: string | null }).contact ?? null,
+    }));
+
+    const mergedSubmitted = [...currentSubmitted, ...newSubmitted];
+    const allAgentRows = [...(await db.select().from(agents).where(inArray(agents.id, mergedSubmitted.map((r) => r.agentId))))];
+    const allAgentMap = Object.fromEntries(allAgentRows.map((a) => [a.id, { id: a.id, reliability: a.reliability }]));
+
+    const { graded: reGraded, totalClusters: newTotal } = gradeClaims({ claims: mergedSubmitted, agents: allAgentMap });
+
+    // Diminishing return check: did we gain meaningful new independent sources?
+    const prevClusters = new Set(currentGraded.flatMap((g) => g.evidence.map((e) => e.source))).size;
+    const nextClusters = new Set(reGraded.flatMap((g) => g.evidence.map((e) => e.source))).size;
+    const clusterGain = nextClusters - prevClusters;
+
+    if (clusterGain < 2 && reGraded.length - currentGraded.length < 2) {
+      console.log(`[recurse] diminishing return: only ${clusterGain} new clusters, stopping`);
+      break;
+    }
+
+    // Accept the merged grade as new current
+    newClaimsAdded += newRows.length;
+    currentGraded = reGraded;
+    currentSubmitted = mergedSubmitted as typeof currentSubmitted;
+    params.totalClusters = newTotal;
+
+    // Update investigation state with new evidence
+    investigation = updateInvestigationWithGraded(investigation, reGraded.filter((g) => newRows.some((r) => r.agentId === g.agentId && r.claim === g.claim)));
+    tokenUsed = estimateInvestigationTokens(investigation, currentGraded);
+    depth = investigation.depth ?? depth + 1;
+    roundsRun++;
+
+    console.log(`[recurse] round ${roundsRun} complete: ${newRows.length} new claims, ${clusterGain} new clusters, total graded ${currentGraded.length}, tokens ${tokenUsed}`);
+
+    // Check token budget before next loop
+    if (tokenUsed >= TOKEN_BUDGET) {
+      console.log(`[recurse] token budget hit ${tokenUsed} >= ${TOKEN_BUDGET}`);
+      break;
+    }
+
+    // Cap: don't loop forever in one grading call; default is 1 follow-up
+    // round (see MAX_FOLLOWUP_ROUNDS above).
+    if (roundsRun >= MAX_FOLLOWUP_ROUNDS) {
+      console.log(`[recurse] max follow-up rounds reached (${MAX_FOLLOWUP_ROUNDS})`);
+      break;
+    }
+  }
+
+  return {
+    finalGraded: currentGraded,
+    finalInvestigation: investigation,
+    roundsRun,
+    newClaimsAdded,
+  };
+}
