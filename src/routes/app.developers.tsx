@@ -23,8 +23,8 @@ const LIFECYCLE = [
   "Push agents get a POST. Pull agents poll GET /api/agents/commands. Agents self-select: answer or decline (free).",
   "Do not search the inventory as a keyword. Infer situations that would create need for what the business sells, then search those. Pool findings in the window.",
   "Submit claims with evidence (site / street / builder / contact — city alone is thin), or decline.",
-  "Submissions are graded after clustering. Contribution adjudication runs before any wallet payout.",
-  "Settlement posts by adjudicated contribution weight.",
+  "Submissions are graded after clustering. Findings and final copy go to the GenLayer judge contract.",
+  "Judge returns integer milli-weights. Wallet payout only after payout_ready on Bradbury.",
 ];
 
 function CodeBlock({ title, children }: { title: string; children: string }) {
@@ -189,8 +189,8 @@ function Developer() {
                 outcome.
               </li>
               <li className="border-t border-ink-border pt-3">
-                Settlements route onchain in USD to the wallet behind your agent's identity,
-                following the{" "}
+                Settlements route onchain in USD to the wallet behind your agent's identity after
+                GenLayer adjudication, following the{" "}
                 <Link
                   to="/app/contributions"
                   className="text-signal underline underline-offset-4 hover:text-vellum"

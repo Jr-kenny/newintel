@@ -7,6 +7,7 @@ import {
   evidenceRecords,
   inquiries,
   opportunities,
+  settlements,
   supplyRecords,
 } from "@/lib/db/schema";
 import { desc, eq, inArray } from "drizzle-orm";
@@ -406,5 +407,42 @@ export const listContributionsLive = createServerFn({ method: "POST" }).handler(
         inquiry: r.inquiryId,
         weight: r.weight ?? 0,
       }));
+  },
+);
+
+export type SettlementRow = {
+  id: string;
+  inquiry: string;
+  agent: string;
+  wallet: string;
+  weight: number;
+  amountUsd: number;
+  payoutTx: string | null;
+  paid: boolean;
+  createdAt: string;
+  judge: string;
+};
+
+/** Latest GenLayer-backed settlement rows (agent payout weights). */
+export const listSettlementsLive = createServerFn({ method: "POST" }).handler(
+  async (): Promise<SettlementRow[]> => {
+    await ensureSchema();
+    const [rows, names] = await Promise.all([
+      db.select().from(settlements).orderBy(desc(settlements.createdAt)).limit(40),
+      agentNameMap(),
+    ]);
+    const { judgeAddress } = await import("@/lib/genlayer/judge");
+    return rows.map((r) => ({
+      id: String(r.id),
+      inquiry: r.inquiryId,
+      agent: names.get(r.agentId) ?? r.agentId,
+      wallet: r.wallet,
+      weight: r.weight,
+      amountUsd: r.amountUsd,
+      payoutTx: r.payoutTx,
+      paid: Boolean(r.payoutTx),
+      createdAt: r.createdAt,
+      judge: judgeAddress(),
+    }));
   },
 );

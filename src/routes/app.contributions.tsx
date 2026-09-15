@@ -3,7 +3,12 @@ import { ArrowUpRight, Coins, Scale, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/app/AppShell";
 import { MetricBlock, SectionHeading } from "@/components/app/AppUI";
-import { listContributionsLive, type ContributionTier } from "@/lib/orchestrator/workspace";
+import {
+  listContributionsLive,
+  listSettlementsLive,
+  type ContributionTier,
+  type SettlementRow,
+} from "@/lib/orchestrator/workspace";
 
 export const Route = createFileRoute("/app/contributions")({
   head: () => ({
@@ -102,9 +107,11 @@ function Contributions() {
       }[]
     | null
   >(null);
+  const [settlements, setSettlements] = useState<SettlementRow[] | null>(null);
 
   useEffect(() => {
     void listContributionsLive().then(setContributions);
+    void listSettlementsLive().then(setSettlements);
   }, []);
 
   const rows = contributions ?? [];
@@ -203,6 +210,55 @@ function Contributions() {
               </article>
             ))}
           </div>
+        </section>
+
+        <section className="surface-dark mt-10 p-5 sm:p-7" aria-labelledby="genlayer-settlement">
+          <SectionHeading
+            dark
+            eyebrow="GenLayer settlement"
+            title="Agent payout weights from consensus"
+            action={<Scale className="size-5 text-signal" aria-hidden />}
+          />
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-muted">
+            After the business receives its report, findings and final copy go onchain. The judge
+            contract returns integer milli-shares. Settlement only posts when{" "}
+            <span className="font-mono text-vellum">payout_ready</span> is true.
+          </p>
+          {settlements && settlements.length > 0 ? (
+            <div className="mt-6 overflow-hidden rounded-sm border border-ink-border">
+              <div className="app-list-head label-mono bg-ink/60">
+                <span>Agent</span>
+                <span>Wallet</span>
+                <span>Chain weight</span>
+                <span>USD</span>
+                <span>Status</span>
+              </div>
+              {settlements.slice(0, 12).map((s) => (
+                <div key={s.id} className="app-list-row items-center border-t border-ink-border">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-vellum">{s.agent}</p>
+                    <p className="font-mono text-[0.62rem] text-ink-muted">{s.inquiry}</p>
+                  </div>
+                  <p className="truncate font-mono text-[0.66rem] text-ink-muted">{s.wallet}</p>
+                  <p className="font-mono text-sm text-signal">×{s.weight.toFixed(3)}</p>
+                  <p className="font-mono text-sm text-vellum">${s.amountUsd.toFixed(2)}</p>
+                  <span className="app-status app-status-verified">
+                    <span className="app-status-dot" aria-hidden />
+                    {s.paid ? "PAID" : "READY"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-6 font-mono text-xs text-ink-muted">
+              No chain settlements yet. Run settle-from-weights after a completed inquiry.
+            </p>
+          )}
+          {settlements?.[0] && (
+            <p className="mt-3 font-mono text-[0.62rem] text-ink-muted">
+              Judge {settlements[0].judge} · Bradbury · milli-shares sum 1000
+            </p>
+          )}
         </section>
 
         <section className="mt-10" aria-labelledby="ledger">

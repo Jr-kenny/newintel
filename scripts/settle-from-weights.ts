@@ -13,10 +13,11 @@ import {
   type AgentSubmissionPackage,
 } from "../src/lib/genlayer/contribution";
 import {
-  adjudicate,
-  payoutReady,
+  settlementGate,
   judgeAddress,
   milliToShares,
+  recordFinding,
+  recordFinal,
 } from "../src/lib/genlayer/judge";
 
 const inquiryId = process.argv[2];
@@ -44,9 +45,6 @@ const packages = Array.from(byAgent.values());
 console.log("judge", judgeAddress(), "agents", packages.length);
 console.log("1/3 record_finding per agent (retry until ACCEPTED)…");
 
-// Import judge writers
-const { recordFinding, recordFinal } = await import("../src/lib/genlayer/judge");
-
 let findingOk = 0;
 for (const p of packages) {
   // one aggregated observation per agent
@@ -58,24 +56,22 @@ for (const p of packages) {
     if (!company && o.company) company = o.company;
     for (const s of o.sources.slice(0, 2)) sources.push(s);
   }
-  let ok = false;
-  for (let attempt = 0; attempt < 4 && !ok; attempt++) {
-    ok = await recordFinding({
-      inquiryId,
-      agentId: p.agent_id,
-      observation: {
-        company,
-        location: p.observations[0]?.location ?? null,
-        contact: p.observations[0]?.contact ?? null,
-        event: events.join(" | ").slice(0, 500),
-        sources: Array.from(new Set(sources)).slice(0, 5),
-        observed: p.observations[0]?.observed ?? new Date().toISOString().slice(0, 10),
-      },
-    });
-    if (!ok) await new Promise((r) => setTimeout(r, 2000));
-  }
+  const ok = await recordFinding({
+    inquiryId,
+    agentId: p.agent_id,
+    observation: {
+      company,
+      location: p.observations[0]?.location ?? null,
+      contact: p.observations[0]?.contact ?? null,
+      event: events.join(" | ").slice(0, 500),
+      sources: Array.from(new Set(sources)).slice(0, 5),
+      observed: p.observations[0]?.observed ?? new Date().toISOString().slice(0, 10),
+    },
+  });
   if (ok) findingOk++;
   console.log(`  ${p.agent_id} ok=${ok}`);
+  // Bradbury under load: space writes so consensus can keep up.
+  await new Promise((r) => setTimeout(r, 800));
 }
 if (findingOk === 0) {
   console.error("FATAL: no findings on chain — cannot settle");
@@ -110,8 +106,7 @@ if (!finalOk) {
 }
 
 console.log("3/3 adjudicate (required)…");
-const milli = await adjudicate(inquiryId);
-const ready = await payoutReady(inquiryId);
+const { milli, ready } = await settlementGate(inquiryId);
 if (!milli || !ready) {
   console.error("FATAL: adjudicate/payout_ready failed on GenLayer");
   console.error("  milli", milli, "ready", ready);
@@ -124,6 +119,11 @@ const total = Object.values(shares).reduce((a, b) => a + b, 0) || 1;
 
 console.log("\n=== GenLayer settlement (REQUIRED) ===");
 console.log("milli", milli);
+
+// Replace any local rows from a prior non-chain settle so the table
+// only reflects this chain-backed verdict.
+await db.delete(settlements).where(eq(settlements.inquiryId, inquiryId));
+
 for (const [agentId, w] of Object.entries(shares)) {
   const amount = Math.round(poolUsd * (w / total) * 100) / 100;
   const wallet = agentRows.find((a) => a.id === agentId)?.wallet ?? "0x0";

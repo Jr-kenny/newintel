@@ -42,14 +42,23 @@ payout_ready   → true
 1. CLI often delivers JSON args as **dicts** — contracts must accept `typing.Any` and stringify
 2. Non-JSON `record_final` strings must still count as recorded (`len > 0`)
 3. LLM `adjudicate` times out / crashes GenVM — deterministic integer weights only
-4. Bradbury writes **flake** — retry findings; fail closed if final/adjudicate fail
+4. Bradbury writes **flake** — retry findings and adjudicate; fail closed if final/adjudicate fail after retries
 5. Bun scripts need a **full genlayer path** (fnm shim not on default PATH)
+6. Hosted Studionet health can be `degraded` (stuck tx on another contract) while **our judge still accepts writes**
+7. `judge.ts` retries writes 3× with backoff; success = `ACCEPTED` / `FINISHED_WITH_RETURN` / `successfully executed`
 
 ## Live run
 
 `INQ-mtzgdlgzicft` — packaging/cold-chain West Africa  
-30 claims · 27 clusters · report written · settlement rows in local DB  
-(chain adjudicate for that id was pre-deterministic-contract)
+51 claims · 7 agents · report written  
+
+**Chain settle DONE** (2026-09-15): 7/7 `record_finding` ACCEPTED, `record_final` ACCEPTED,
+`adjudicate` ACCEPTED (1 retry). Verdict milli-weights sum 1000, `payout_ready=true`.
+Local settlements replaced from chain weights only (no fallback).
+
+```
+agt-…2mklhr 174 · 2347yc/dunkx/1295z8/1yqbji 168 · 80tgfpq/28ju1u 77
+```
 
 ## Out of scope (intentionally)
 
@@ -60,6 +69,6 @@ payout_ready   → true
 
 ## Next
 
-- Fresh live run end-to-end through **required** GenLayer settle
 - USDC transfers on Base once weights are chain-final
 - Tighten agent claim quality (street/site/contact, not bare 8-K lines)
+- Surface `payout_tx` after Base transfer lands
