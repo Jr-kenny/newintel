@@ -17,14 +17,12 @@ export const getNavCounts = createServerFn({ method: "POST" })
       .select({ n: count() })
       .from(evidenceRecords)
       .where(eq(evidenceRecords.status, "verified"));
-    const [agentsRow] = await db
-      .select({ n: count() })
-      .from(agents)
-      .where(eq(agents.status, "online"));
+    const online = await db.select().from(agents).where(eq(agents.status, "online"));
+    const { isNewintelAgent } = await import("@/lib/orchestrator/grid");
     return {
       supply: Number(supply?.n ?? 0),
       evidence: Number(evidence?.n ?? 0),
-      agents: Number(agentsRow?.n ?? 0),
+      agents: online.filter((a) => isNewintelAgent(a)).length,
     };
   } catch (err) {
     console.error("getNavCounts failed:", err);

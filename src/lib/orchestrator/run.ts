@@ -34,6 +34,7 @@ import { writeReport, type PricedInJudgment } from "./write-report";
 import { buildEvidenceGraph, persistConnectionChains } from "./evidence-graph";
 import { computeBreakdown, detectContradictions } from "./scoring";
 import { runFollowUpRounds } from "./recurse";
+import { newintelGrid } from "./grid";
 
 /**
  * Sourcing window: how long the grid stays open for claims after dispatch.
@@ -145,8 +146,8 @@ export function orchestratorSearchHints(
  * whether the inquiry fits is the agent's own intelligent decision, made
  * where its knowledge lives. Declining is normal and free.
  */
-export function agentsOnGrid(all: { id: string; status: string; endpoint: string }[]) {
-  return all.filter((agent) => agent.status === "online");
+export function agentsOnGrid(all: { id: string; status: string; endpoint: string; name?: string | null }[]) {
+  return newintelGrid(all);
 }
 
 /** Pull-only agents have no public URL — they poll /api/agents/commands. */

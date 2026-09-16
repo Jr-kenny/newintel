@@ -36,6 +36,8 @@ const DDL = [
     wallet TEXT NOT NULL,
     agentic_id TEXT,
     status TEXT NOT NULL DEFAULT 'online',
+    visibility TEXT NOT NULL DEFAULT 'public',
+    grid TEXT NOT NULL DEFAULT 'newintel',
     reliability REAL NOT NULL DEFAULT 0.8,
     created_at TEXT NOT NULL,
     last_seen TEXT NOT NULL
@@ -335,6 +337,9 @@ export async function ensureSchema() {
     "ALTER TABLE inquiries ADD COLUMN lease_owner TEXT",
     "ALTER TABLE inquiries ADD COLUMN lease_expires_at TEXT",
     "ALTER TABLE agents ADD COLUMN visibility TEXT DEFAULT 'public'",
+    // Shared sqld holds StockIntel + Newintel units. grid tags which app owns the agent.
+    "ALTER TABLE agents ADD COLUMN grid TEXT DEFAULT 'newintel'",
+    "ALTER TABLE inquiries ADD COLUMN product TEXT DEFAULT 'newintel'",
   ];
   for (const statement of alters) {
     try {

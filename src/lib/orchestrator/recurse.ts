@@ -18,6 +18,7 @@ import {
   SOURCING_WINDOW_SECONDS,
   AGENT_METHOD,
 } from "./run";
+import { newintelGrid } from "./grid";
 
 const FOLLOWUP_WINDOW_SECONDS = Math.min(60, Math.max(15, Number(process.env["PRIME_FOLLOWUP_WINDOW_SECONDS"] ?? 25)));
 const FOLLOWUP_SLEEP_MS = FOLLOWUP_WINDOW_SECONDS * 1000 + 2000; // dispatch time + buffer
@@ -132,9 +133,10 @@ export async function runFollowUpRounds(params: {
 
     console.log(`[recurse] derived ${tasks.length} follow-up tasks: ${tasks.map((t) => t.agent + ":" + t.objective.slice(0, 40)).join(" | ")}`);
 
-    // No specialist routing — every online agent receives every follow-up.
+    // No specialist routing — every online Newintel agent receives every follow-up.
+    // StockIntel twins share this sqld; they are not part of this grid.
     const allAgents = await db.select().from(agents);
-    const online = allAgents.filter((a) => a.status === "online");
+    const online = newintelGrid(allAgents);
 
     // Snapshot time before dispatch — new claims after this are follow-up
     const beforeIds = new Set((await db.select().from(claims).where(eq(claims.inquiryId, params.inquiryId))).map((r) => r.id));

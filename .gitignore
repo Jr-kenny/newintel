@@ -39,3 +39,4 @@ dist-ssr
 *.sln
 *.sw?
 .smoke-memory.db*
+.cache/

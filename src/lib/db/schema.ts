@@ -11,6 +11,11 @@ export const agents = sqliteTable("agents", {
   status: text("status").notNull().default("online"),
   /** "public" (default) or "private" — private specialists stay off public listings. */
   visibility: text("visibility").notNull().default("public"),
+  /**
+   * Which product owns this unit. Shared sqld holds StockIntel twins on
+   * ports 8790-8799 and Newintel on 8810-8819; dispatch and roster filter on this.
+   */
+  grid: text("grid").notNull().default("newintel"),
   reliability: real("reliability").notNull().default(0.8),
   createdAt: text("created_at").notNull(),
   lastSeen: text("last_seen").notNull(),
@@ -43,6 +48,11 @@ export const inquiries = sqliteTable("inquiries", {
   id: text("id").primaryKey(),
   /** Workspace account identity that owns this run (null for guest runs). */
   identity: text("identity"),
+  /**
+   * Which product opened this inquiry. Shared sqld means StockIntel's
+   * orchestrator must not pick up Newintel work (and the reverse).
+   */
+  product: text("product").notNull().default("newintel"),
   question: text("question").notNull(),
   category: text("category"),
   geography: text("geography"),

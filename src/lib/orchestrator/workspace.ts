@@ -11,6 +11,7 @@ import {
   supplyRecords,
 } from "@/lib/db/schema";
 import { desc, eq, inArray } from "drizzle-orm";
+import { isNewintelAgent } from "./grid";
 
 /**
  * Live workspace data — every /app page reads through these instead of
@@ -337,10 +338,26 @@ export const listSupplyLive = createServerFn({ method: "POST" })
 export const listAgentsLive = createServerFn({ method: "POST" }).handler(
   async (): Promise<AgentRow[]> => {
     await ensureSchema();
-    const [agentRows, claimRows] = await Promise.all([
+    const [allAgents, claimRows] = await Promise.all([
       db.select().from(agents).orderBy(desc(agents.createdAt)),
       db.select().from(claims),
     ]);
+
+    // Collapse re-registers of the same endpoint/wallet so a restarting
+    // connector does not inflate the public roster (10 units can look like 20).
+    // Shared sqld also holds StockIntel twins on ports 8790-8799 — drop them.
+    const latestByEndpoint = new Map<string, (typeof allAgents)[number]>();
+    for (const a of allAgents) {
+      if (!isNewintelAgent(a)) continue;
+      const key = (a.endpoint || a.wallet || a.name).toLowerCase();
+      const prev = latestByEndpoint.get(key);
+      if (!prev || (a.createdAt ?? "") > (prev.createdAt ?? "")) {
+        latestByEndpoint.set(key, a);
+      }
+    }
+    const agentRows = Array.from(latestByEndpoint.values()).sort((a, b) =>
+      (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
+    );
 
     return agentRows.map((a) => {
       const graded = claimRows.filter((c) => c.agentId === a.id && c.weight != null);

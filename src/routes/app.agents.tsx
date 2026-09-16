@@ -60,8 +60,22 @@ function Agents() {
   const [recordCount, setRecordCount] = useState(0);
 
   useEffect(() => {
-    void listAgentsLive().then(setAgents);
-    void listEvidenceLive().then((rows) => setRecordCount(rows.length));
+    let cancelled = false;
+    void listAgentsLive()
+      .then((rows) => {
+        if (!cancelled) setAgents(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setAgents([]);
+      });
+    void listEvidenceLive()
+      .then((rows) => {
+        if (!cancelled) setRecordCount(rows.length);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const roster = agents ?? [];
@@ -233,7 +247,7 @@ function Agents() {
                     {agent.unique}%
                   </span>
                   <span className="ml-2 font-mono text-[0.62rem] text-muted-foreground">
-                    · {agent.paidOg > 0 ? `${agent.paidOg} OG earned` : "independent citations"}
+                    · independent citations
                   </span>
                 </p>
               </div>

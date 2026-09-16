@@ -195,7 +195,10 @@ function Intelligence() {
       }
       // The report is the product: prefer runs carrying one, and accept the
       // raw readout otherwise. Legacy synthesis counts as a finished run too.
-      if (state.status === "complete" && (state.report || state.synthesis)) {
+      if (
+        state.status === "complete" &&
+        (state.report || state.synthesis || (state.readout && state.readout.length > 0))
+      ) {
         window.clearInterval(pollRef.current!);
         setPhase("done");
         if (identityRef.current) void refreshRunsRef.current?.();

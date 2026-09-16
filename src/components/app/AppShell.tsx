@@ -49,23 +49,26 @@ function useLiveNotes() {
   const [notes, setNotes] = useState<Record<string, NavNote>>({});
   useEffect(() => {
     let cancelled = false;
-    void getNavCounts().then((c) => {
-      if (!cancelled && c) {
-        setNotes({
-          "/app/supply": c.supply > 0 ? c.supply : "add yours",
-          "/app/evidence": c.evidence > 0 ? c.evidence : "•",
-        });
-      }
-    });
-    const t = window.setInterval(() => {
-      void getNavCounts().then((c) => {
-        if (c)
+    let inFlight = false;
+    const load = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const c = await getNavCounts();
+        if (!cancelled && c) {
           setNotes({
             "/app/supply": c.supply > 0 ? c.supply : "add yours",
             "/app/evidence": c.evidence > 0 ? c.evidence : "•",
           });
-      });
-    }, 60_000);
+        }
+      } catch {
+        // badge is optional; never block nav on a slow count
+      } finally {
+        inFlight = false;
+      }
+    };
+    void load();
+    const t = window.setInterval(() => void load(), 60_000);
     return () => {
       cancelled = true;
       window.clearInterval(t);

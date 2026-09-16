@@ -28,6 +28,7 @@
 import { db, ensureSchema, nowIso } from "@/lib/db";
 import { inquiries } from "@/lib/db/schema";
 import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { newintelGrid } from "@/lib/orchestrator/grid";
 import { runInquiry, tryGradeIfReady } from "@/lib/orchestrator/run";
 import { acquireLease, releaseLease, WORKER_ID } from "@/lib/orchestrator/lease";
 
@@ -53,12 +54,19 @@ let failures = 0;
  */
 async function findWork(): Promise<string[]> {
   const now = nowIso();
+  // Only Newintel work. StockIntel shares this sqld and its orchestrator
+  // is still running on the same box; without this filter each product
+  // steals the other's inquiries.
   const rows = await db
     .select({ id: inquiries.id })
     .from(inquiries)
     .where(
       and(
         inArray(inquiries.status, ["dispatching", "collecting", "grading"]),
+        or(
+          eq(inquiries.product, "newintel"),
+          isNull(inquiries.product),
+        ),
         or(
           isNull(inquiries.leaseOwner),
           isNull(inquiries.leaseExpiresAt),

@@ -67,6 +67,7 @@ export const submitInquiry = createServerFn({ method: "POST" })
       identity: data.identity ?? null,
       question: data.question,
       status: "dispatching",
+      product: "newintel",
       createdAt: ts,
       updatedAt: ts,
     });
@@ -192,7 +193,15 @@ export const getInquiry = createServerFn({ method: "POST" })
       liveAgents,
       wave,
       elapsedSeconds,
-      readout: row.readoutJson ? readoutSchema.parse(JSON.parse(row.readoutJson)) : null,
+      readout: (() => {
+        if (!row.readoutJson) return null;
+        try {
+          return readoutSchema.parse(JSON.parse(row.readoutJson));
+        } catch (err) {
+          console.error("readout parse failed, serving empty:", err);
+          return null;
+        }
+      })(),
       /**
        * The intelligence report. Null on runs from before the report pass, so
        * the UI decides what to show rather than assuming it is there. A
@@ -203,6 +212,18 @@ export const getInquiry = createServerFn({ method: "POST" })
         try {
           return reportSchema.parse(JSON.parse(row.reportJson));
         } catch (err) {
+          // A finished run with a slightly off schema must still show up.
+          // The report is the product; dropping it here made complete runs
+          // look like "nothing came back".
+          try {
+            const raw = JSON.parse(row.reportJson) as Record<string, unknown>;
+            if (raw && typeof raw === "object" && "executive" in raw) {
+              console.error("report schema soft-fail, serving raw:", err);
+              return raw as unknown as import("@/lib/orchestrator/report").IntelligenceReport;
+            }
+          } catch {
+            /* fall through */
+          }
           console.error("report parse failed, serving without it:", err);
           return null;
         }
@@ -287,18 +308,21 @@ export const latestActiveRun = createServerFn({ method: "POST" })
 
 export const listLiveAgents = createServerFn({ method: "POST" }).handler(async () => {
   await ensureSchema();
+  const { isNewintelAgent } = await import("./grid");
   const rows = await db.select().from(agents).orderBy(desc(agents.createdAt));
-  return rows.map((a) => ({
-    id: a.id,
-    name: a.name,
-    specialty: a.specialty,
-    wallet: `${a.wallet.slice(0, 6)}…${a.wallet.slice(-4)}`,
-    status: a.status,
-    reliability: a.reliability,
-    // ERC-7857 identity pointer ("0x7857:<tokenId>") once minted.
-    agenticId: a.agenticId,
-    connectedAt: a.createdAt,
-  }));
+  return rows
+    .filter((a) => isNewintelAgent(a))
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      specialty: a.specialty,
+      wallet: `${a.wallet.slice(0, 6)}…${a.wallet.slice(-4)}`,
+      status: a.status,
+      reliability: a.reliability,
+      // ERC-7857 identity pointer ("0x7857:<tokenId>") once minted.
+      agenticId: a.agenticId,
+      connectedAt: a.createdAt,
+    }));
 });
 
 const supplySchema = z.object({

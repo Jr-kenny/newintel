@@ -316,6 +316,9 @@ async function registerAgent(request: Request): Promise<Response> {
   await ensureSchema();
   const { name, specialty, endpoint, wallet, agenticId, private: isPrivate } = parsed.data;
   const visibility = isPrivate ? "private" : "public";
+  // Tag which product owns this unit. Shared sqld would otherwise mix grids.
+  const { isNewintelAgent } = await import("@/lib/orchestrator/grid");
+  const grid = isNewintelAgent({ endpoint, name }) ? "newintel" : "stockintel";
 
   // Re-registering the same endpoint updates rather than duplicates.
   const existing = await db.select().from(agents).where(eq(agents.endpoint, endpoint));
@@ -328,12 +331,13 @@ async function registerAgent(request: Request): Promise<Response> {
         specialty,
         wallet,
         visibility,
+        grid,
         ...(agenticId ? { agenticId } : {}),
         status: "online",
         lastSeen: nowIso(),
       })
       .where(eq(agents.id, row!.id));
-    return json({ agent_id: row!.id, updated: true, visibility });
+    return json({ agent_id: row!.id, updated: true, visibility, grid });
   }
 
   const id = newId("agt");
@@ -344,6 +348,7 @@ async function registerAgent(request: Request): Promise<Response> {
     endpoint,
     wallet,
     visibility,
+    grid,
     ...(agenticId ? { agenticId } : {}),
     status: "online",
     createdAt: nowIso(),
@@ -367,7 +372,7 @@ async function registerAgent(request: Request): Promise<Response> {
       .catch((err) => console.error(`agentic-id mint deferred for ${name}:`, err.message));
   }
 
-  return json({ agent_id: id, created: true, visibility });
+  return json({ agent_id: id, created: true, visibility, grid });
 }
 
 async function submitClaims(request: Request): Promise<Response> {

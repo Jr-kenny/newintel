@@ -91,3 +91,13 @@ Local settlements replaced from chain weights only (no fallback).
 - Fresh live inquiry end-to-end: claim → GenLayer settle → USDC payout → login faucet
 - Tighten agent claim quality (street/site/contact, not bare 8-K lines)
 - Top up signer when USDC drops under ~6 (need faucet grants + next pool)
+
+## 2026-09-16 — why "20 agents" and empty UI
+
+- Shared sqld holds **StockIntel (8790-8799) + Newintel (8810-8819)**. Both marked online.
+- `listAgentsLive` / `agentsOnGrid` used every online row → product showed 20 and dispatched the wrong grid.
+- Latest hotel-expansion run (`INQ-mu46w6j66cog`) completed with report+readout, but **all claims were StockIntel** (`agt-mtnud*`). Newintel agents healthy, silent.
+- `stockintel-orchestrator` also runs on the same box and can steal Newintel inquiries from the shared `inquiries` table.
+- Fix: `src/lib/orchestrator/grid.ts` port-band filter + `agents.grid` / `inquiries.product`; Newintel orchestrator only takes `product=newintel`.
+- Report soft-parse so a schema drift no longer looks like "nothing came back".
+
