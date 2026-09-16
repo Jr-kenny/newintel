@@ -16,6 +16,8 @@
     "@aa-sdk/core": "^4.88.5",
     "@account-kit/infra": "^4.88.5",
     "@account-kit/smart-contracts": "^4.88.5",
+    "@circle-fin/adapter-viem-v2": "^1.18.0",
+    "@circle-fin/bridge-kit": "^1.15.0",
     "@hookform/resolvers": "^5.2.2",
     "@libsql/client": "^0.17.4",
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -73,7 +75,7 @@
     "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
-    "viem": "^2.55.19",
+    "viem": "^2.56.5",
     "vite-tsconfig-paths": "^6.0.2",
     "zod": "^4.4.3"
   },

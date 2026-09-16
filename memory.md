@@ -58,15 +58,20 @@ Local settlements replaced from chain weights only (no fallback).
 
 **USDC payouts DONE** (2026-09-16): 7/7 paid $12.01 on Base Sepolia.
 
-## Production
+## Production (24/7, not a demo)
 
-- App: `https://stockintelislive.vercel.app` → project `primeisles/newintel`
-- Git: **connected** to `Jr-kenny/newintel` (pushes auto-deploy)
-- Judge: `0x10713BFfC2D1811eE5F75d453534aFDE330AEaF8` (Sibyl scoring)
+- Web: `https://stockintelislive.vercel.app` → project `primeisles/newintel` (git auto-deploy)
+- AWS box `i-0018b77942c4452bc` (`100.61.3.35`) — **separate from stockintel units**
+  - Code: `/opt/newintel` (public git clone)
+  - Orchestrator: `newintel-orchestrator` port 8889
+  - Agents: `newintel-*` ports 8810-8819, register to Newintel Vercel
+- Shared DB: sqld docker `http://localhost:8000` on the box
+  - Vercel: `DATABASE_URL=http://100.61.3.35:8000` + JWT `DATABASE_AUTH_TOKEN`
+- Judge: `0x10713BFfC2D1811eE5F75d453534aFDE330AEaF8`
 - Hook: `https://stockintelislive.vercel.app/api/wallet/relay-payout`
-- DB: `/tmp` file fallback (ephemeral). Need Turso `DATABASE_URL` for shared state
-- Arc→Base CCTP: `bun scripts/bridge-arc-to-base.ts` after sending Arc USDC to sponsor
-- Faucet UI: no raw reverts; wallet is copyable; receive needs no user gas
+- Sponsor USDC: 200 on Base Sepolia (bridged from Arc via Bridge Kit)
+- Faucet UI: no raw reverts; wallet copyable; receive needs no user gas
+- Deploy AWS: SSM → pull `/opt/newintel` → restart `newintel-*` units
 
 ## Sibyl → GenLayer scoring
 
