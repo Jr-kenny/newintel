@@ -340,6 +340,8 @@ export async function ensureSchema() {
     // Shared sqld holds StockIntel + Newintel units. grid tags which app owns the agent.
     "ALTER TABLE agents ADD COLUMN grid TEXT DEFAULT 'newintel'",
     "ALTER TABLE inquiries ADD COLUMN product TEXT DEFAULT 'newintel'",
+    "ALTER TABLE inquiries ADD COLUMN run_fee_usd REAL",
+    "ALTER TABLE inquiries ADD COLUMN pool_usd REAL",
   ];
   for (const statement of alters) {
     try {

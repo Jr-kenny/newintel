@@ -127,7 +127,9 @@ if (!milli || !ready) {
 }
 
 const shares = milliToShares(milli);
-const poolUsd = 20 * 0.6;
+// Pool comes from the run fee stamped at submit. Fall back to the
+// published $20 × 60% only if this inquiry predates billing.
+const poolUsd = row.poolUsd && row.poolUsd > 0 ? row.poolUsd : 20 * 0.6;
 const total = Object.values(shares).reduce((a, b) => a + b, 0) || 1;
 
 console.log("\n=== GenLayer settlement (REQUIRED) ===");

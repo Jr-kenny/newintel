@@ -103,5 +103,6 @@ Local settlements replaced from chain weights only (no fallback).
 - **URL**: `stockintelislive.vercel.app` is the **stockintel** Vercel project alias. Newintel production is `https://newintel.vercel.app`. AWS `PUBLIC_SUBMIT_URL` + agent units now point there.
 - Newintel agents (8810-8819) were healthy but silent on the last run; StockIntel twins (8790-8799) produced every claim. StockIntel orchestrator still runs on the same box.
 - README reframed 2026-09-16: demand graph for agents, methods stay private, GenLayer as settlement spine. Business app nav is workspace only; developer chapter is `/developers`.
+- **Billing wired** (`src/lib/billing.ts`): signed-in runs consume free trial (2) then credits. Run fee $20, contributor pool 60% ($12) stamped on inquiry. Faucet also grants 2 run credits. settle-from-weights uses `inquiries.pool_usd`.
 
 

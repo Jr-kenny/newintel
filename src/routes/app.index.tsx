@@ -296,6 +296,32 @@ function Intelligence() {
       },
     });
     setSubmitting(false);
+    if ("error" in result && result.error) {
+      setPhase("failed");
+      setInquiry({
+        id: "billing",
+        question: submittedQuery,
+        category: null,
+        geography: null,
+        status: "failed",
+        agentsMatched: 0,
+        claimsReceived: 0,
+        sourcesClustered: 0,
+        liveClaims: null,
+        liveAgents: null,
+        wave: null,
+        elapsedSeconds: null,
+        readout: null,
+        report: null,
+        reportMode: null,
+        synthesis: null,
+        error: result.error,
+        windowSeconds: 150,
+        windowClosesAt: null,
+        dispatchedAt: null,
+      } as InquiryState);
+      return;
+    }
     if ("inquiryId" in result && result.inquiryId) {
       setQuery("");
       setPhase("running");

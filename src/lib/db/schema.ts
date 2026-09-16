@@ -53,6 +53,10 @@ export const inquiries = sqliteTable("inquiries", {
    * orchestrator must not pick up Newintel work (and the reverse).
    */
   product: text("product").notNull().default("newintel"),
+  /** Commercial fee this run bills (USD). Set at open; funds the contributor pool. */
+  runFeeUsd: real("run_fee_usd"),
+  /** Agent pool for this run (USD). GenLayer milli-shares split this amount. */
+  poolUsd: real("pool_usd"),
   question: text("question").notNull(),
   category: text("category"),
   geography: text("geography"),

@@ -62,15 +62,45 @@ export const submitInquiry = createServerFn({ method: "POST" })
     const id = newId("INQ");
     const ts = nowIso();
 
-    await db.insert(inquiries).values({
-      id,
-      identity: data.identity ?? null,
-      question: data.question,
-      status: "dispatching",
-      product: "newintel",
-      createdAt: ts,
-      updatedAt: ts,
-    });
+    // Signed-in workspaces spend a free trial or a paid credit. Guest runs
+    // stay free for evaluation; production traffic is expected to be signed in.
+    let billing: { ok: true; kind: "free" | "credit"; creditsLeft: number; freeRunsLeft: number } | { ok: false; error: string } | null =
+      null;
+    if (data.identity) {
+      const { consumeRunCredit } = await import("@/lib/billing");
+      await db.insert(inquiries).values({
+        id,
+        identity: data.identity ?? null,
+        question: data.question,
+        status: "dispatching",
+        product: "newintel",
+        createdAt: ts,
+        updatedAt: ts,
+      });
+      billing = await consumeRunCredit({
+        identity: data.identity,
+        inquiryId: id,
+        email: data.email ?? null,
+        wallet: data.wallet ?? null,
+      });
+      if (!billing.ok) {
+        await db.delete(inquiries).where(eq(inquiries.id, id));
+        return { error: billing.error } as const;
+      }
+      const { stampRunEconomics } = await import("@/lib/billing");
+      await stampRunEconomics(id);
+    } else {
+      await db.insert(inquiries).values({
+        id,
+        identity: data.identity ?? null,
+        question: data.question,
+        status: "dispatching",
+        product: "newintel",
+        createdAt: ts,
+        updatedAt: ts,
+      });
+    }
+
     // Local/dev: dispatch immediately. (Production can still tick via resume.)
     const submitUrl = (() => {
       if (process.env["PUBLIC_SUBMIT_URL"]) return `${process.env["PUBLIC_SUBMIT_URL"]}/api/claims/submit`;
@@ -80,7 +110,12 @@ export const submitInquiry = createServerFn({ method: "POST" })
     void import("./run")
       .then(({ runInquiry }) => runInquiry(id, submitUrl))
       .catch((err) => console.error("runInquiry kick failed:", err));
-    return { inquiryId: id };
+    return {
+      inquiryId: id,
+      ...(billing && billing.ok
+        ? { billing: { kind: billing.kind, creditsLeft: billing.creditsLeft, freeRunsLeft: billing.freeRunsLeft } }
+        : {}),
+    };
   });
 
 export type SynthesisSource = { label: string; url: string };
@@ -364,4 +399,21 @@ export const listSupplyRecords = createServerFn({ method: "POST" })
       markets: JSON.parse(r.marketsJson) as string[],
       targets: JSON.parse(r.targetsJson) as string[],
     }));
+  });
+
+/** Workspace run balance: free trial left + paid credits. */
+export const getMyCredits = createServerFn({ method: "POST" })
+  .validator((input: unknown) => runsQuerySchema.parse(input))
+  .handler(async ({ data }) => {
+    const { getAccountFor, FREE_TRIAL_RUNS, RUN_PRICE_USD, poolUsdForRun } = await import(
+      "@/lib/billing"
+    );
+    const account = await getAccountFor(data.identity);
+    return {
+      credits: account?.credits ?? 0,
+      freeRunsLeft: account?.freeRunsLeft ?? FREE_TRIAL_RUNS,
+      freeRunsUsed: account?.freeRunsUsed ?? 0,
+      runPriceUsd: RUN_PRICE_USD,
+      poolUsd: poolUsdForRun(),
+    };
   });

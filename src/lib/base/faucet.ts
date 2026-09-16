@@ -82,6 +82,22 @@ export async function claimFaucet(input: {
         sentAt: nowIso(),
       })
       .where(eq(faucetClaims.wallet, wallet));
+    // Login faucet also funds run credits so the workspace can keep paying
+    // for intelligence after the free trial, not just hold gas money.
+    if (input.identity) {
+      try {
+        const { grantCredits, FAUCET_RUN_CREDITS } = await import("@/lib/billing");
+        await grantCredits({
+          identity: input.identity,
+          amount: FAUCET_RUN_CREDITS,
+          kind: "faucet",
+          txHash: sent.txHash,
+          wallet,
+        });
+      } catch (err) {
+        console.error("faucet credit grant failed:", err);
+      }
+    }
     return {
       ok: true,
       alreadyClaimed: false,
