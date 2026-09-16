@@ -1,9 +1,7 @@
 /**
- * Login faucet — one-time 2 USDC on Base Sepolia for every new workspace
- * wallet. Enough for two paid inquiry runs at the current pool share.
- *
- * Trigger: first authenticated Privy session with an embedded wallet.
- * Source: BASE_SIGNER_KEY hot wallet funded off-app (Circle faucet / transfer).
+ * Login faucet — 2 USDC plus gas dust on Base Sepolia for every new
+ * workspace wallet. That USDC is what pays for inquiry runs. The gas
+ * dust lets the embedded wallet actually send the ERC-20 transfer.
  */
 
 import { db, ensureSchema, nowIso } from "@/lib/db";
@@ -13,6 +11,8 @@ import { getUsdcBalance, sendUsdc, usdcReady } from "./usdc";
 
 /** Two full runs at the demo pool price. */
 export const FAUCET_USDC = 2;
+/** Gas dust so the workspace can actually send USDC for a run. */
+export const FAUCET_ETH = "0.001";
 
 export type FaucetResult =
   | { ok: true; alreadyClaimed: true; txHash: string; amount: number }
@@ -72,6 +72,25 @@ export async function claimFaucet(input: {
 
   try {
     const sent = await sendUsdc(wallet, FAUCET_USDC);
+    // Workspace needs ETH gas to transfer USDC for a paid run.
+    let gasTx: string | null = null;
+    try {
+      const { ethers } = await import("ethers");
+      const { baseConfig } = await import("./config");
+      const config = baseConfig();
+      if (config.privateKey) {
+        const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+        const signer = new ethers.Wallet(config.privateKey, provider);
+        const gas = await signer.sendTransaction({
+          to: wallet,
+          value: ethers.parseEther(FAUCET_ETH),
+        });
+        await gas.wait();
+        gasTx = gas.hash;
+      }
+    } catch (err) {
+      console.error("faucet gas send failed:", err);
+    }
     await db
       .update(faucetClaims)
       .set({
@@ -82,22 +101,8 @@ export async function claimFaucet(input: {
         sentAt: nowIso(),
       })
       .where(eq(faucetClaims.wallet, wallet));
-    // Login faucet also funds run credits so the workspace can keep paying
-    // for intelligence after the free trial, not just hold gas money.
-    if (input.identity) {
-      try {
-        const { grantCredits, FAUCET_RUN_CREDITS } = await import("@/lib/billing");
-        await grantCredits({
-          identity: input.identity,
-          amount: FAUCET_RUN_CREDITS,
-          kind: "faucet",
-          txHash: sent.txHash,
-          wallet,
-        });
-      } catch (err) {
-        console.error("faucet credit grant failed:", err);
-      }
-    }
+    // Login faucet is USDC for paid runs. No free-trial credit grant.
+    void gasTx;
     return {
       ok: true,
       alreadyClaimed: false,

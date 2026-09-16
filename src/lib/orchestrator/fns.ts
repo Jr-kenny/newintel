@@ -22,6 +22,8 @@ const submitSchema = z.object({
   identity: z.string().min(3).max(120).optional(),
   email: z.string().max(160).optional(),
   wallet: z.string().max(60).optional(),
+  /** Base Sepolia USDC transfer that paid the run fee. Required when signed in. */
+  paymentTx: z.string().max(80).optional(),
 });
 
 export type ReadoutEntry = {
@@ -62,11 +64,27 @@ export const submitInquiry = createServerFn({ method: "POST" })
     const id = newId("INQ");
     const ts = nowIso();
 
-    // Signed-in workspaces spend a free trial or a paid credit. Guest runs
-    // stay free for evaluation; production traffic is expected to be signed in.
-    let billing: { ok: true; kind: "free" | "credit"; creditsLeft: number; freeRunsLeft: number } | { ok: false; error: string } | null =
+    // Signed-in workspaces must pay in USDC on Base Sepolia. Guest runs stay
+    // free for evaluation only.
+    let billing: { ok: true; kind: "usdc" | "credit"; creditsLeft: number; freeRunsLeft: number; txHash?: string } | { ok: false; error: string } | null =
       null;
     if (data.identity) {
+      if (!data.paymentTx || !data.wallet) {
+        return {
+          error:
+            "Connect a wallet and pay the run fee in USDC on Base Sepolia before starting.",
+        } as const;
+      }
+      const { verifyRunPayment } = await import("@/lib/base/run-payment");
+      const { RUN_PRICE_USD } = await import("@/lib/billing");
+      const paid = await verifyRunPayment({
+        txHash: data.paymentTx,
+        from: data.wallet,
+        minAmountUsd: RUN_PRICE_USD,
+      });
+      if (!paid.ok) {
+        return { error: paid.error } as const;
+      }
       const { consumeRunCredit } = await import("@/lib/billing");
       await db.insert(inquiries).values({
         id,
@@ -82,13 +100,14 @@ export const submitInquiry = createServerFn({ method: "POST" })
         inquiryId: id,
         email: data.email ?? null,
         wallet: data.wallet ?? null,
+        paymentTx: paid.txHash,
       });
       if (!billing.ok) {
         await db.delete(inquiries).where(eq(inquiries.id, id));
         return { error: billing.error } as const;
       }
       const { stampRunEconomics } = await import("@/lib/billing");
-      await stampRunEconomics(id);
+      await stampRunEconomics(id, paid.txHash);
     } else {
       await db.insert(inquiries).values({
         id,

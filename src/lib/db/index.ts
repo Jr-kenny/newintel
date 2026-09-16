@@ -342,6 +342,7 @@ export async function ensureSchema() {
     "ALTER TABLE inquiries ADD COLUMN product TEXT DEFAULT 'newintel'",
     "ALTER TABLE inquiries ADD COLUMN run_fee_usd REAL",
     "ALTER TABLE inquiries ADD COLUMN pool_usd REAL",
+    "ALTER TABLE inquiries ADD COLUMN payment_tx TEXT",
   ];
   for (const statement of alters) {
     try {

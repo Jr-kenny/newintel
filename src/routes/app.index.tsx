@@ -283,6 +283,71 @@ function Intelligence() {
     if (submitting || phase === "running") return;
     const submittedQuery = query;
     setSubmitting(true);
+
+    let paymentTx: string | undefined;
+    if (identity && privy.walletAddress && privy.firstWallet) {
+      const { payRunFeeUsdc } = await import("@/components/app/pay-run");
+      const { RUN_PRICE_USD } = await import("@/lib/billing");
+      const paid = await payRunFeeUsdc({
+        wallet: privy.firstWallet,
+        amountUsd: RUN_PRICE_USD,
+      });
+      if (!paid.ok) {
+        setSubmitting(false);
+        setPhase("failed");
+        setInquiry({
+          id: "billing",
+          question: submittedQuery,
+          category: null,
+          geography: null,
+          status: "failed",
+          agentsMatched: 0,
+          claimsReceived: 0,
+          sourcesClustered: 0,
+          liveClaims: null,
+          liveAgents: null,
+          wave: null,
+          elapsedSeconds: null,
+          readout: null,
+          report: null,
+          reportMode: null,
+          synthesis: null,
+          error: paid.error,
+          windowSeconds: 150,
+          windowClosesAt: null,
+          dispatchedAt: null,
+        } as InquiryState);
+        return;
+      }
+      paymentTx = paid.txHash;
+    } else if (identity) {
+      setSubmitting(false);
+      setPhase("failed");
+      setInquiry({
+        id: "billing",
+        question: submittedQuery,
+        category: null,
+        geography: null,
+        status: "failed",
+        agentsMatched: 0,
+        claimsReceived: 0,
+        sourcesClustered: 0,
+        liveClaims: null,
+        liveAgents: null,
+        wave: null,
+        elapsedSeconds: null,
+        readout: null,
+        report: null,
+        reportMode: null,
+        synthesis: null,
+        error: "Connect a wallet to pay the run fee in USDC on Base Sepolia.",
+        windowSeconds: 150,
+        windowClosesAt: null,
+        dispatchedAt: null,
+      } as InquiryState);
+      return;
+    }
+
     const result = await submitInquiry({
       data: {
         question: submittedQuery,
@@ -291,6 +356,7 @@ function Intelligence() {
               identity,
               ...(privy.email ? { email: privy.email } : {}),
               ...(privy.walletAddress ? { wallet: privy.walletAddress } : {}),
+              ...(paymentTx ? { paymentTx } : {}),
             }
           : {}),
       },
@@ -374,7 +440,13 @@ function Intelligence() {
                 />
                 <div className="app-query-meta">
                   <p aria-live="polite">
-                    {submitting ? "Sending your request…" : "One request. Sourced, graded, cited."}
+                    {submitting
+                      ? identity
+                        ? "Paying 1 USDC on Base Sepolia, then opening the run…"
+                        : "Sending your request…"
+                      : identity
+                        ? "Signed-in runs are paid in USDC on Base Sepolia."
+                        : "One request. Sourced, graded, cited."}
                   </p>
                   <button
                     type="submit"
@@ -387,8 +459,10 @@ function Intelligence() {
                           className="inline-block size-3 animate-spin rounded-full border-2 border-ink/40 border-t-ink"
                           aria-hidden
                         />
-                        Sending…
+                        {identity ? "Paying…" : "Sending…"}
                       </>
+                    ) : identity ? (
+                      "Pay 1 USDC · run"
                     ) : (
                       "Run intelligence"
                     )}

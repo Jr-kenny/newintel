@@ -1,24 +1,21 @@
 /**
  * Run billing for the business workspace.
  *
- * The GenLayer contract only splits the contributor pool. This module is
- * the other half: the customer spends a free trial or a credit, and that
- * run's fee is what funds the pool agents settle against.
- *
- * Demo economics kept consistent with settle-from-weights:
- *   run fee $20 · contributor pool 60% → $12 per cycle
- *   new workspace gets 2 free trial runs (matches the faucet story)
+ * Customers pay in USDC on Base Sepolia. The login faucet exists so a new
+ * workspace has both USDC (to pay for runs) and a little ETH (to send it).
+ * GenLayer only splits the contributor pool that those fees fund.
  */
 
 import { db, ensureSchema, nowIso, newId } from "@/lib/db";
 import { accounts, creditLedger, inquiries } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-export const RUN_PRICE_USD = 20;
+/** What the workspace wallet must send to the treasury per run. */
+export const RUN_PRICE_USD = 1;
 export const POOL_SHARE = 0.6;
-export const FREE_TRIAL_RUNS = 2;
-/** Credits granted when the login faucet succeeds (one workspace). */
-export const FAUCET_RUN_CREDITS = 2;
+/** Free trials are off — paid USDC is the path. */
+export const FREE_TRIAL_RUNS = 0;
+export const FAUCET_RUN_CREDITS = 0;
 
 export function poolUsdForRun(): number {
   return Math.round(RUN_PRICE_USD * POOL_SHARE * 100) / 100;
@@ -70,50 +67,50 @@ export async function ensureAccount(input: {
     createdAt: nowIso(),
     updatedAt: nowIso(),
   });
-  return {
-    id,
-    identity,
-    credits: 0,
-    freeRunsUsed: 0,
-    freeRunsLeft: FREE_TRIAL_RUNS,
-  };
+  return { id, identity, credits: 0, freeRunsUsed: 0, freeRunsLeft: FREE_TRIAL_RUNS };
 }
 
 export type ConsumeResult =
-  | { ok: true; kind: "free" | "credit"; creditsLeft: number; freeRunsLeft: number }
+  | {
+      ok: true;
+      kind: "usdc" | "credit";
+      creditsLeft: number;
+      freeRunsLeft: number;
+      txHash?: string;
+    }
   | { ok: false; error: string };
 
 /**
- * Spend one free trial or one paid credit for an inquiry.
- * Call only after the inquiry row exists so the ledger can point at it.
+ * Record a paid run. Requires a verified Base USDC payment for signed-in
+ * workspaces. Legacy prepaid credits still work if a paymentTx is absent
+ * (should not happen on new flows).
  */
 export async function consumeRunCredit(input: {
   identity: string;
   inquiryId: string;
   email?: string | null;
   wallet?: string | null;
+  paymentTx?: string | null;
 }): Promise<ConsumeResult> {
   await ensureSchema();
   const account = await ensureAccount(input);
 
-  if (account.freeRunsLeft > 0) {
-    const used = account.freeRunsUsed + 1;
-    await db
-      .update(accounts)
-      .set({ freeRunsUsed: used, updatedAt: nowIso() })
-      .where(eq(accounts.id, account.id));
+  if (input.paymentTx) {
     await db.insert(creditLedger).values({
       accountId: account.id,
       delta: 0,
-      kind: "free_run",
+      kind: "run_payment",
       inquiryId: input.inquiryId,
+      txHash: input.paymentTx,
+      paidNative: RUN_PRICE_USD,
       createdAt: nowIso(),
     });
     return {
       ok: true,
-      kind: "free",
+      kind: "usdc",
       creditsLeft: account.credits,
-      freeRunsLeft: Math.max(0, FREE_TRIAL_RUNS - used),
+      freeRunsLeft: account.freeRunsLeft,
+      txHash: input.paymentTx,
     };
   }
 
@@ -130,22 +127,15 @@ export async function consumeRunCredit(input: {
       inquiryId: input.inquiryId,
       createdAt: nowIso(),
     });
-    return {
-      ok: true,
-      kind: "credit",
-      creditsLeft: left,
-      freeRunsLeft: 0,
-    };
+    return { ok: true, kind: "credit", creditsLeft: left, freeRunsLeft: 0 };
   }
 
   return {
     ok: false,
-    error:
-      "No runs left on this workspace. Free trial is used up and credits are empty. Claim the login faucet or top up to continue.",
+    error: `Pay ${RUN_PRICE_USD} USDC on Base Sepolia to open this run. Claim the login faucet if you need testnet USDC and gas.`,
   };
 }
 
-/** Add paid credits (top-up or faucet grant). */
 export async function grantCredits(input: {
   identity: string;
   amount: number;
@@ -172,14 +162,17 @@ export async function grantCredits(input: {
   return { credits };
 }
 
-/** Stamp the commercial fee and agent pool onto the inquiry at open time. */
-export async function stampRunEconomics(inquiryId: string): Promise<void> {
+export async function stampRunEconomics(
+  inquiryId: string,
+  paymentTx?: string | null,
+): Promise<void> {
   await ensureSchema();
   await db
     .update(inquiries)
     .set({
       runFeeUsd: RUN_PRICE_USD,
       poolUsd: poolUsdForRun(),
+      paymentTx: paymentTx ?? null,
       updatedAt: nowIso(),
     })
     .where(eq(inquiries.id, inquiryId));

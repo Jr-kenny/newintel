@@ -57,6 +57,8 @@ export const inquiries = sqliteTable("inquiries", {
   runFeeUsd: real("run_fee_usd"),
   /** Agent pool for this run (USD). GenLayer milli-shares split this amount. */
   poolUsd: real("pool_usd"),
+  /** Base Sepolia USDC tx that paid for this run. */
+  paymentTx: text("payment_tx"),
   question: text("question").notNull(),
   category: text("category"),
   geography: text("geography"),
