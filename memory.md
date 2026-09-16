@@ -65,11 +65,14 @@ agt-…2mklhr 174 · 2347yc/dunkx/1295z8/1yqbji 168 · 80tgfpq/28ju1u 77
 - Network: Base Sepolia (`BASE_NETWORK=testnet`)
 - USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (Circle)
 - Signer: `BASE_SIGNER_KEY` → `0x047782D3BAa31aEEBe682A6705FeBCB275b96dc9`
-  (**needs Base Sepolia ETH for gas + USDC**)
+  (funded with 0.1 ETH + 20 USDC via Circle faucet)
 - Login faucet: first Privy wallet → `POST /api/wallet/faucet` sends **2 USDC** once
 - Balance: `GET /api/wallet/balance?wallet=0x…` · shown in workspace block
 - Payout: `bun scripts/payout-usdc.ts [INQ-…] [--dry]` after GenLayer `payout_ready`
 - Specialists register with `"private": true` (agents.visibility)
+
+**USDC payouts DONE** (2026-09-16) for `INQ-mtzgdlgzicft`:
+7/7 paid, $12.01 total, 0 failed. Signer remaining ~10 USDC.
 
 ## Out of scope (intentionally)
 
@@ -80,7 +83,6 @@ agt-…2mklhr 174 · 2347yc/dunkx/1295z8/1yqbji 168 · 80tgfpq/28ju1u 77
 
 ## Next
 
-- Fund `0x0477…6dc9` with Base Sepolia ETH + USDC, then
-  `bun scripts/payout-usdc.ts INQ-mtzgdlgzicft`
+- Fresh live inquiry end-to-end: claim → GenLayer settle → USDC payout → login faucet
 - Tighten agent claim quality (street/site/contact, not bare 8-K lines)
-- Surface `payout_tx` after the first Base transfer lands
+- Top up signer when USDC drops under ~6 (need faucet grants + next pool)
