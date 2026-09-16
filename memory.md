@@ -56,23 +56,20 @@ payout_ready   → true
 `adjudicate` ACCEPTED (1 retry). Verdict milli-weights sum 1000, `payout_ready=true`.
 Local settlements replaced from chain weights only (no fallback).
 
-```
-agt-…2mklhr 174 · 2347yc/dunkx/1295z8/1yqbji 168 · 80tgfpq/28ju1u 77
-```
+**USDC payouts DONE** (2026-09-16): 7/7 paid $12.01 on Base Sepolia.
 
-## Base USDC (faucet + payouts)
+## Production
 
-- Network: Base Sepolia (`BASE_NETWORK=testnet`)
-- USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (Circle)
-- Signer: `BASE_SIGNER_KEY` → `0x047782D3BAa31aEEBe682A6705FeBCB275b96dc9`
-  (funded with 0.1 ETH + 20 USDC via Circle faucet)
-- Login faucet: first Privy wallet → `POST /api/wallet/faucet` sends **2 USDC** once
-- Balance: `GET /api/wallet/balance?wallet=0x…` · shown in workspace block
-- Payout: `bun scripts/payout-usdc.ts [INQ-…] [--dry]` after GenLayer `payout_ready`
-- Specialists register with `"private": true` (agents.visibility)
+- App: `https://stockintelislive.vercel.app` (project `primeisles/stockintel`)
+- Judge: `0x10713BFfC2D1811eE5F75d453534aFDE330AEaF8` (Sibyl scoring)
+- Hook: `https://stockintelislive.vercel.app/api/wallet/relay-payout`
+- Env on Vercel: BASE_* + GENLAYER_* set
 
-**USDC payouts DONE** (2026-09-16) for `INQ-mtzgdlgzicft`:
-7/7 paid, $12.01 total, 0 failed. Signer remaining ~10 USDC.
+## Sibyl → GenLayer scoring
+
+- `agentMemoryStats()` packs `verified_recalls` + `discoveries` into findings
+- Judge adds +20/recall (cap 3) and +5/discovery (cap 5)
+- Follow-up answer → verifiedRecalls++ in Sibyl → higher next-cycle weight
 
 ## Out of scope (intentionally)
 
