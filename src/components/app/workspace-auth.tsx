@@ -328,10 +328,6 @@ export function WorkspaceAuth() {
                     ? faucetNote ?? "Faucet unavailable"
                     : "2 USDC on first login · enough for 2 runs"}
           </p>
-          <p className="mt-0.5 font-mono text-[0.56rem] text-ink-muted/80">
-            Copy this address to fund Base ETH or USDC. Receiving faucet USDC
-            needs no gas from you.
-          </p>
         </div>
       )}
       <div className="mt-1 flex items-center gap-2">
