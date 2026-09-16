@@ -29,11 +29,93 @@ class NewintelContributionJudge(gl.Contract):
     finals: TreeMap[str, str]
     # inquiry_id -> json string of last ContributionWeights
     verdicts: TreeMap[str, str]
+    # HTTP endpoint that starts Base USDC payouts (web-oracle inter-comms)
+    payout_hook: str
+    # Scratch for the in-flight web-oracle POST (strict_eq leader fn)
+    _hook_inquiry: str
+    _hook_weights: str
 
     def __init__(self):
         self.findings = TreeMap()
         self.finals = TreeMap()
         self.verdicts = TreeMap()
+        self.payout_hook = ""
+        self._hook_inquiry = ""
+        self._hook_weights = "{}"
+
+    @gl.public.write
+    def set_payout_hook(self, url: str) -> bool:
+        """Point the judge at the Base payout relayer. Empty string disables."""
+        self.payout_hook = str(url)[:300]
+        return True
+
+    @gl.public.view
+    def get_payout_hook(self) -> str:
+        return self.payout_hook
+
+    @gl.public.write
+    def request_payout(self, inquiry_id: str) -> typing.Any:
+        """
+        Inter-comms: after adjudicate, POST the ready verdict to the
+        payout relayer under consensus (web oracle). The relayer re-checks
+        this contract, then sends USDC on Base. Weights stay on GenLayer
+        as the source of truth — the hook only kicks the transfer.
+        """
+        raw = self.verdicts.get(inquiry_id) or ""
+        if not raw:
+            return {"ok": False, "note": "no verdict"}
+        try:
+            verdict = json.loads(raw)
+        except Exception:
+            return {"ok": False, "note": "bad verdict json"}
+        if not verdict.get("ready"):
+            return {"ok": False, "note": "payout_ready is false"}
+        weights = verdict.get("weights")
+        if not isinstance(weights, dict) or len(weights) == 0:
+            return {"ok": False, "note": "empty weights"}
+
+        hook = self.payout_hook
+        if len(hook) == 0:
+            return {"ok": False, "note": "payout hook not set"}
+
+        # Stage payload on self so strict_eq can use a zero-arg leader fn.
+        self._hook_inquiry = inquiry_id
+        self._hook_weights = json.dumps(weights)
+        try:
+            delivered = gl.eq_principle.strict_eq(self._post_payout_hook)
+        except Exception as e:
+            return {"ok": False, "note": "hook error: " + str(e)[:160]}
+
+        return {
+            "ok": bool(delivered),
+            "inquiry_id": inquiry_id,
+            "hook": hook,
+            "weights": weights,
+            "note": "web-oracle payout trigger" if delivered else "hook not 2xx",
+        }
+
+    def _post_payout_hook(self) -> bool:
+        """Consensus web-oracle POST. True on 2xx."""
+        hook = self.payout_hook
+        inquiry_id = str(self._hook_inquiry)
+        try:
+            weights = json.loads(str(self._hook_weights))
+        except Exception:
+            weights = {}
+        try:
+            resp = gl.nondet.web.request(
+                hook,
+                method="POST",
+                body={
+                    "inquiry_id": inquiry_id,
+                    "weights": weights,
+                    "ready": True,
+                },
+            )
+            code = int(resp.status_code)
+            return code >= 200 and code < 300
+        except Exception:
+            return False
 
     @gl.public.write
     def record_finding(self, inquiry_id: str, agent_id: str, observation_json: typing.Any) -> bool:

@@ -121,12 +121,22 @@ console.log("\n=== GenLayer settlement (REQUIRED) ===");
 console.log("milli", milli);
 
 // Replace any local rows from a prior non-chain settle so the table
-// only reflects this chain-backed verdict.
+// only reflects this chain-backed verdict. Preserve payout_tx if already paid.
+const prior = await db
+  .select()
+  .from(settlements)
+  .where(eq(settlements.inquiryId, inquiryId));
+const paidByAgent = new Map(
+  prior
+    .filter((r) => r.payoutTx)
+    .map((r) => [r.agentId, { payoutTx: r.payoutTx, paidNative: r.paidNative, tx: r.tx }]),
+);
 await db.delete(settlements).where(eq(settlements.inquiryId, inquiryId));
 
 for (const [agentId, w] of Object.entries(shares)) {
   const amount = Math.round(poolUsd * (w / total) * 100) / 100;
   const wallet = agentRows.find((a) => a.id === agentId)?.wallet ?? "0x0";
+  const already = paidByAgent.get(agentId);
   await db.insert(settlements).values({
     inquiryId,
     agentId,
@@ -134,12 +144,32 @@ for (const [agentId, w] of Object.entries(shares)) {
     weight: w,
     amountUsd: amount,
     createdAt: nowIso(),
+    ...(already
+      ? {
+          payoutTx: already.payoutTx,
+          paidNative: already.paidNative ?? amount,
+          tx: already.tx ?? already.payoutTx,
+        }
+      : {}),
   });
-  console.log(`  ${(w * 100).toFixed(1)}%  $${amount.toFixed(2)}  ${agentId}`);
+  console.log(
+    `  ${(w * 100).toFixed(1)}%  $${amount.toFixed(2)}  ${agentId}${already ? " (already paid)" : ""}`,
+  );
 }
 console.log("\nOK — settlement recorded from GenLayer weights only.");
 
-// Optional: pay agent wallets in USDC when the Base signer is funded.
+// Inter-comms: ask the IC to web-oracle POST the verdict to the Base
+// relayer under consensus. Optional if the hook is not configured yet.
+try {
+  const { requestPayout } = await import("../src/lib/genlayer/judge");
+  console.log("\nGenLayer request_payout (web-oracle → Base relayer)…");
+  const out = await requestPayout(inquiryId);
+  console.log(out?.slice(0, 400) ?? "(no output)");
+} catch (err) {
+  console.error("request_payout skipped:", err);
+}
+
+// Optional: pay agent wallets in USDC on Base when the Base signer is funded.
 try {
   const { usdcReady } = await import("../src/lib/base/usdc");
   if (usdcReady()) {

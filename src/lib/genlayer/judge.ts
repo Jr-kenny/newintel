@@ -225,6 +225,21 @@ export async function settlementGate(
   return { milli, ready };
 }
 
+/** Point the IC at the Base payout relayer (web-oracle hook). */
+export async function setPayoutHook(url: string): Promise<boolean> {
+  const { ok } = await writeWithRetry("set_payout_hook", [url], 2);
+  return ok;
+}
+
+/**
+ * Ask the IC to POST the ready verdict to the payout relayer under
+ * consensus. This is the GenLayer → Base inter-comms path.
+ */
+export async function requestPayout(inquiryId: string): Promise<string | null> {
+  const write = await writeWithRetry("request_payout", [inquiryId], 2);
+  return write.out;
+}
+
 export function judgeAddress(): string {
   return ADDRESS;
 }

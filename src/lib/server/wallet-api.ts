@@ -1,15 +1,17 @@
 /**
- * HTTP surface for the login faucet and wallet balance.
- * Privy session wallets call these from the workspace block.
+ * HTTP surface for the login faucet, wallet balance, and the GenLayer
+ * web-oracle payout relayer.
  *
- *  POST /api/wallet/faucet   { wallet, identity? }
+ *  POST /api/wallet/faucet         { wallet, identity? }
  *  GET  /api/wallet/balance?wallet=0x…
+ *  POST /api/wallet/relay-payout   { inquiry_id, weights }  ← from GenLayer IC
  */
 
 import { z } from "zod";
 import { claimFaucet, walletBalances, FAUCET_USDC } from "@/lib/base/faucet";
 import { baseSignerAddress, usdcAddress, usdcReady } from "@/lib/base/usdc";
 import { baseConfig } from "@/lib/base/config";
+import { relayPayout } from "@/lib/base/relay-payout";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -24,6 +26,13 @@ const json = (body: unknown, status = 200) =>
 const faucetSchema = z.object({
   wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "wallet must be an EVM address"),
   identity: z.string().max(200).optional(),
+});
+
+const relaySchema = z.object({
+  inquiry_id: z.string().min(3).max(80),
+  weights: z.record(z.string(), z.number()).optional(),
+  ready: z.boolean().optional(),
+  judge: z.string().max(80).optional(),
 });
 
 export async function handleWalletApi(request: Request): Promise<Response> {
@@ -59,6 +68,7 @@ export async function handleWalletApi(request: Request): Promise<Response> {
       faucetAmount: FAUCET_USDC,
       signer: baseSignerAddress(),
       ready: usdcReady(),
+      relay: "/api/wallet/relay-payout",
     });
   }
 
@@ -78,6 +88,27 @@ export async function handleWalletApi(request: Request): Promise<Response> {
       identity: parsed.data.identity ?? null,
     });
     return json(result, result.ok ? 200 : 502);
+  }
+
+  // GenLayer Intelligent Contract web-oracle target.
+  if (request.method === "POST" && url.pathname === "/api/wallet/relay-payout") {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Invalid JSON" }, 400);
+    }
+    const parsed = relaySchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: "Validation failed", issues: parsed.error.issues }, 400);
+    }
+    const result = await relayPayout({
+      inquiryId: parsed.data.inquiry_id,
+      claimedWeights: parsed.data.weights ?? null,
+    });
+    // 200 even on "refuse" so consensus doesn't brick — the contract
+    // still has payout_ready. Only 5xx when the relayer itself crashed.
+    return json(result, 200);
   }
 
   return json({ error: "Not found" }, 404);
