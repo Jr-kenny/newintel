@@ -4,8 +4,13 @@ import { createClient, type Client } from "@libsql/client";
 /**
  * Persistence for the orchestrator. Local dev uses an on-disk SQLite file;
  * set DATABASE_URL (e.g. a Turso libsql:// endpoint) for shared/production.
+ * On Vercel without Turso we fall back to /tmp (writable, ephemeral).
  */
-const url = process.env["DATABASE_URL"]?.trim() || "file:./prime-layer.db";
+function defaultUrl(): string {
+  if (process.env["VERCEL"]) return "file:///tmp/prime-layer.db";
+  return "file:./prime-layer.db";
+}
+const url = process.env["DATABASE_URL"]?.trim() || defaultUrl();
 
 const globalForDb = globalThis as unknown as { __primeLayerClient?: Client };
 

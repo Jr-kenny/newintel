@@ -90,13 +90,31 @@ export async function claimFaucet(input: {
       explorerUrl: sent.explorerUrl,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
     await db
       .update(faucetClaims)
-      .set({ status: "failed", error: message.slice(0, 300) })
+      .set({ status: "failed", error: raw.slice(0, 300) })
       .where(eq(faucetClaims.wallet, wallet));
-    return { ok: false, error: message };
+    return { ok: false, error: friendlyFaucetError(raw) };
   }
+}
+
+/** Never surface raw RPC/revert dumps in the UI. */
+export function friendlyFaucetError(raw: string): string {
+  const m = raw.toLowerCase();
+  if (m.includes("transfer amount exceeds balance") || m.includes("insufficient")) {
+    return "Faucet is empty right now. Try again after the sponsor tank is topped up.";
+  }
+  if (m.includes("needs base eth") || m.includes("gas")) {
+    return "Sponsor wallet needs gas. Ping the operator.";
+  }
+  if (m.includes("timeout") || m.includes("econnrefused") || m.includes("network")) {
+    return "Faucet network hiccup. Try again in a moment.";
+  }
+  if (m.includes("already claimed") || m.includes("alreadyClaimed")) {
+    return "This wallet already claimed its 2 USDC.";
+  }
+  return "Faucet unavailable. Your wallet address still works — fund it manually if you have Base USDC.";
 }
 
 export async function faucetStatus(wallet: string): Promise<{

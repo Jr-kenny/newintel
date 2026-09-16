@@ -51,6 +51,7 @@ export function WorkspaceAuth() {
     "idle" | "claiming" | "claimed" | "already" | "error"
   >("idle");
   const [faucetNote, setFaucetNote] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const faucetAttempted = useRef(false);
 
   const refreshBalances = useCallback(async (address: string) => {
@@ -80,7 +81,12 @@ export function WorkspaceAuth() {
           | { ok: false; error: string };
         if (!res.ok || !("ok" in data) || !data.ok) {
           setFaucetState("error");
-          setFaucetNote("error" in data ? String(data.error).slice(0, 80) : "faucet failed");
+          const msg =
+            "error" in data ? String(data.error) : "Faucet unavailable";
+          // Server already maps reverts; keep UI copy short and human.
+          setFaucetNote(
+            msg.length > 90 ? "Faucet unavailable. Top up the sponsor tank." : msg,
+          );
           return;
         }
         setFaucetState(data.alreadyClaimed ? "already" : "claimed");
@@ -283,10 +289,32 @@ export function WorkspaceAuth() {
               {balances ? Number(balances.eth).toFixed(4) : "—"}
             </span>
           </div>
-          <p className="mt-1.5 truncate font-mono text-[0.58rem] text-ink-muted" title={wallet}>
-            {wallet.slice(0, 6)}…{wallet.slice(-4)}
-            {balances?.network ? ` · ${balances.network}` : ""}
-          </p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              type="button"
+              title={wallet}
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(wallet)
+                  .then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                  })
+                  .catch(() => {});
+              }}
+              className="inline-flex items-center gap-1 font-mono text-[0.62rem] text-ink-muted underline-offset-2 hover:text-signal hover:underline"
+            >
+              {wallet.slice(0, 6)}…{wallet.slice(-4)}
+              <span aria-hidden className="text-[0.58rem]">
+                {copied ? "copied" : "copy"}
+              </span>
+            </button>
+            {balances?.network ? (
+              <span className="font-mono text-[0.58rem] text-ink-muted">
+                · {balances.network}
+              </span>
+            ) : null}
+          </div>
           <p className="mt-1 font-mono text-[0.58rem] text-ink-muted">
             {faucetState === "claiming"
               ? "Funding 2 USDC…"
@@ -297,8 +325,12 @@ export function WorkspaceAuth() {
                     ? `Faucet claimed · ${balances.faucet.txHash.slice(0, 10)}…`
                     : "Faucet already claimed"
                   : faucetState === "error"
-                    ? `Faucet: ${faucetNote ?? "failed"}`
+                    ? faucetNote ?? "Faucet unavailable"
                     : "2 USDC on first login · enough for 2 runs"}
+          </p>
+          <p className="mt-0.5 font-mono text-[0.56rem] text-ink-muted/80">
+            Copy this address to fund Base ETH or USDC. Receiving faucet USDC
+            needs no gas from you.
           </p>
         </div>
       )}
