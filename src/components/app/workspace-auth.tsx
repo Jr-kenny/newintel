@@ -1,5 +1,5 @@
 import { usePrivy, useLoginWithOAuth, useLoginWithPasskey } from "@privy-io/react-auth";
-import { useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { DiscordIcon, FarcasterIcon, GithubIcon, GoogleIcon, XIcon } from "./provider-icons";
 
 /**
@@ -9,6 +9,14 @@ import { DiscordIcon, FarcasterIcon, GithubIcon, GoogleIcon, XIcon } from "./pro
  * dashboard before its flow will complete.
  */
 type SocialKey = "google" | "github" | "discord" | "twitter" | "farcaster";
+
+type WalletBalances = {
+  usdc: number;
+  eth: string;
+  network: string;
+  faucet: { claimed: boolean; amount: number | null; txHash: string | null };
+  ready: boolean;
+};
 
 const SOCIAL_BUTTONS: { key: SocialKey; label: string; Icon: ComponentType }[] = [
   { key: "google", label: "Continue with Google", Icon: GoogleIcon },
@@ -33,10 +41,62 @@ export function WorkspaceAuth() {
   const wallet = user?.wallet?.address ?? null;
   const uid = email ?? wallet ?? "user";
   const storageKey = `pl.workspace.${uid}`;
+  const faucetKey = `pl.faucet.${wallet ?? ""}`;
 
   const [label, setLabel] = useState("");
   const [editing, setEditing] = useState(false);
   const [busyMethod, setBusyMethod] = useState<SocialKey | "passkey" | null>(null);
+  const [balances, setBalances] = useState<WalletBalances | null>(null);
+  const [faucetState, setFaucetState] = useState<
+    "idle" | "claiming" | "claimed" | "already" | "error"
+  >("idle");
+  const [faucetNote, setFaucetNote] = useState<string | null>(null);
+  const faucetAttempted = useRef(false);
+
+  const refreshBalances = useCallback(async (address: string) => {
+    try {
+      const res = await fetch(`/api/wallet/balance?wallet=${encodeURIComponent(address)}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as WalletBalances;
+      setBalances(data);
+    } catch {
+      // network blip — keep last known
+    }
+  }, []);
+
+  const runFaucet = useCallback(
+    async (address: string, identity: string) => {
+      if (faucetAttempted.current) return;
+      faucetAttempted.current = true;
+      setFaucetState("claiming");
+      try {
+        const res = await fetch("/api/wallet/faucet", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ wallet: address, identity }),
+        });
+        const data = (await res.json()) as
+          | { ok: true; alreadyClaimed: boolean; txHash: string; amount: number }
+          | { ok: false; error: string };
+        if (!res.ok || !("ok" in data) || !data.ok) {
+          setFaucetState("error");
+          setFaucetNote("error" in data ? String(data.error).slice(0, 80) : "faucet failed");
+          return;
+        }
+        setFaucetState(data.alreadyClaimed ? "already" : "claimed");
+        setFaucetNote(`${data.amount} USDC · ${data.txHash.slice(0, 10)}…`);
+        try {
+          window.localStorage.setItem(faucetKey, data.txHash);
+        } catch {
+          // private browsing
+        }
+      } catch {
+        setFaucetState("error");
+        setFaucetNote("faucet unreachable");
+      }
+    },
+    [faucetKey],
+  );
 
   useEffect(() => {
     try {
@@ -45,6 +105,25 @@ export function WorkspaceAuth() {
       setLabel("");
     }
   }, [storageKey]);
+
+  useEffect(() => {
+    if (!authenticated || !wallet) return;
+    void refreshBalances(wallet);
+    // First login on this wallet → claim 2 USDC once.
+    let claimed = false;
+    try {
+      claimed = Boolean(window.localStorage.getItem(faucetKey));
+    } catch {
+      claimed = false;
+    }
+    if (!claimed) {
+      void runFaucet(wallet, uid);
+    } else {
+      setFaucetState("already");
+    }
+    const timer = window.setInterval(() => void refreshBalances(wallet), 20_000);
+    return () => window.clearInterval(timer);
+  }, [authenticated, wallet, uid, faucetKey, refreshBalances, runFaucet]);
 
   if (!ready) {
     return (
@@ -189,6 +268,39 @@ export function WorkspaceAuth() {
         <p className="truncate font-mono text-[0.62rem] text-ink-muted" title={email}>
           {email}
         </p>
+      )}
+      {wallet && (
+        <div className="mt-2 rounded-sm border border-border bg-card/60 px-2.5 py-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="label-mono text-muted-foreground">Base USDC</span>
+            <span className="font-mono text-sm text-ink tabular-nums">
+              {balances ? `${balances.usdc.toFixed(2)}` : "—"}
+            </span>
+          </div>
+          <div className="mt-1 flex items-baseline justify-between gap-2">
+            <span className="label-mono text-muted-foreground">ETH gas</span>
+            <span className="font-mono text-[0.66rem] text-ink-muted tabular-nums">
+              {balances ? Number(balances.eth).toFixed(4) : "—"}
+            </span>
+          </div>
+          <p className="mt-1.5 truncate font-mono text-[0.58rem] text-ink-muted" title={wallet}>
+            {wallet.slice(0, 6)}…{wallet.slice(-4)}
+            {balances?.network ? ` · ${balances.network}` : ""}
+          </p>
+          <p className="mt-1 font-mono text-[0.58rem] text-ink-muted">
+            {faucetState === "claiming"
+              ? "Funding 2 USDC…"
+              : faucetState === "claimed"
+                ? `Faucet sent · ${faucetNote ?? ""}`
+                : faucetState === "already"
+                  ? balances?.faucet.txHash
+                    ? `Faucet claimed · ${balances.faucet.txHash.slice(0, 10)}…`
+                    : "Faucet already claimed"
+                  : faucetState === "error"
+                    ? `Faucet: ${faucetNote ?? "failed"}`
+                    : "2 USDC on first login · enough for 2 runs"}
+          </p>
+        </div>
       )}
       <div className="mt-1 flex items-center gap-2">
         <button

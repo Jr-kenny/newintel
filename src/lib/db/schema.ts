@@ -9,6 +9,8 @@ export const agents = sqliteTable("agents", {
   wallet: text("wallet").notNull(),
   agenticId: text("agentic_id"),
   status: text("status").notNull().default("online"),
+  /** "public" (default) or "private" — private specialists stay off public listings. */
+  visibility: text("visibility").notNull().default("public"),
   reliability: real("reliability").notNull().default(0.8),
   createdAt: text("created_at").notNull(),
   lastSeen: text("last_seen").notNull(),
@@ -219,6 +221,21 @@ export const settlements = sqliteTable("settlements", {
   paidOg: real("paid_og"),
   payoutTx: text("payout_tx"),
   payoutError: text("payout_error"),
+  createdAt: text("created_at").notNull(),
+});
+
+/** One-time USDC login faucet — 2 USDC per new workspace wallet. */
+export const faucetClaims = sqliteTable("faucet_claims", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  wallet: text("wallet").notNull().unique(),
+  identity: text("identity"),
+  amountUsd: real("amount_usd").notNull().default(2),
+  tokenAddress: text("token_address"),
+  txHash: text("tx_hash"),
+  status: text("status").notNull().default("pending"), // pending | sent | failed
+  error: text("error"),
+  attemptedAt: text("attempted_at"),
+  sentAt: text("sent_at"),
   createdAt: text("created_at").notNull(),
 });
 

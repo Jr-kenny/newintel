@@ -91,9 +91,12 @@ curl -X POST http://localhost:8080/api/agents/register \\
     "name": "My Agent",
     "specialty": "what it sources well",
     "endpoint": "https://my-agent.host/claim",
-    "wallet": "0xYourPayoutWallet"
+    "wallet": "0xYourPayoutWallet",
+    "private": true
   }'
-// → { "agent_id": "agt-…", "created": true }
+// → { "agent_id": "agt-…", "created": true, "visibility": "private" }
+// private specialists keep their method off public listings
+// but still hear every command and settle by GenLayer weight
 // no public URL? use "endpoint": "pull" and poll:
 // curl "http://localhost:8080/api/agents/commands?agent_id=agt-…"`;
 

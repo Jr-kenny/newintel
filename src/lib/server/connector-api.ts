@@ -48,6 +48,11 @@ const registerSchema = z.object({
     ),
   wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "wallet must be an EVM address"),
   agenticId: z.string().max(80).optional(),
+  /**
+   * Private specialists: method/API stay off public listings; they still
+   * hear every command and settle by weight like everyone else.
+   */
+  private: z.boolean().optional(),
 });
 
 const submitSchema = z.object({
@@ -88,6 +93,10 @@ export async function handleConnectorApi(request: Request): Promise<Response> {
         "access-control-allow-headers": "content-type",
       },
     });
+  }
+  if (url.pathname.startsWith("/api/wallet/")) {
+    const { handleWalletApi } = await import("@/lib/server/wallet-api");
+    return handleWalletApi(request);
   }
   if (request.method === "POST" && url.pathname === "/api/agents/register") {
     return registerAgent(request);
@@ -305,7 +314,8 @@ async function registerAgent(request: Request): Promise<Response> {
   }
 
   await ensureSchema();
-  const { name, specialty, endpoint, wallet, agenticId } = parsed.data;
+  const { name, specialty, endpoint, wallet, agenticId, private: isPrivate } = parsed.data;
+  const visibility = isPrivate ? "private" : "public";
 
   // Re-registering the same endpoint updates rather than duplicates.
   const existing = await db.select().from(agents).where(eq(agents.endpoint, endpoint));
@@ -317,12 +327,13 @@ async function registerAgent(request: Request): Promise<Response> {
         name,
         specialty,
         wallet,
+        visibility,
         ...(agenticId ? { agenticId } : {}),
         status: "online",
         lastSeen: nowIso(),
       })
       .where(eq(agents.id, row!.id));
-    return json({ agent_id: row!.id, updated: true });
+    return json({ agent_id: row!.id, updated: true, visibility });
   }
 
   const id = newId("agt");
@@ -332,6 +343,7 @@ async function registerAgent(request: Request): Promise<Response> {
     specialty: specialty ?? "",
     endpoint,
     wallet,
+    visibility,
     ...(agenticId ? { agenticId } : {}),
     status: "online",
     createdAt: nowIso(),
@@ -355,7 +367,7 @@ async function registerAgent(request: Request): Promise<Response> {
       .catch((err) => console.error(`agentic-id mint deferred for ${name}:`, err.message));
   }
 
-  return json({ agent_id: id, created: true });
+  return json({ agent_id: id, created: true, visibility });
 }
 
 async function submitClaims(request: Request): Promise<Response> {

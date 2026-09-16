@@ -191,6 +191,19 @@ const DDL = [
     payout_error TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS faucet_claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet TEXT NOT NULL UNIQUE,
+    identity TEXT,
+    amount_usd REAL NOT NULL DEFAULT 2,
+    token_address TEXT,
+    tx_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT,
+    attempted_at TEXT,
+    sent_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
   // Sibyl memory layer — see README "Sibyl memory layer"
   `CREATE TABLE IF NOT EXISTS memory_sources (
     id TEXT PRIMARY KEY,              -- sourceClusterKey(source)
@@ -316,6 +329,7 @@ export async function ensureSchema() {
     // Single-owner leases: see inquiries.leaseOwner in schema.ts
     "ALTER TABLE inquiries ADD COLUMN lease_owner TEXT",
     "ALTER TABLE inquiries ADD COLUMN lease_expires_at TEXT",
+    "ALTER TABLE agents ADD COLUMN visibility TEXT DEFAULT 'public'",
   ];
   for (const statement of alters) {
     try {

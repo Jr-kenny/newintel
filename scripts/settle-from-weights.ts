@@ -138,3 +138,27 @@ for (const [agentId, w] of Object.entries(shares)) {
   console.log(`  ${(w * 100).toFixed(1)}%  $${amount.toFixed(2)}  ${agentId}`);
 }
 console.log("\nOK — settlement recorded from GenLayer weights only.");
+
+// Optional: pay agent wallets in USDC when the Base signer is funded.
+try {
+  const { usdcReady } = await import("../src/lib/base/usdc");
+  if (usdcReady()) {
+    console.log("\nPaying agent wallets in USDC on Base…");
+    const { spawn } = await import("node:child_process");
+    await new Promise<void>((resolve) => {
+      const child = spawn(process.execPath, ["scripts/payout-usdc.ts", inquiryId], {
+        stdio: "inherit",
+        env: process.env,
+        cwd: process.cwd(),
+      });
+      child.on("exit", (code) => {
+        if (code !== 0) console.error("payout-usdc exited", code);
+        resolve();
+      });
+    });
+  } else {
+    console.log("\nBASE_SIGNER_KEY not set — skip USDC payout (run scripts/payout-usdc.ts later)");
+  }
+} catch (err) {
+  console.error("payout step skipped:", err);
+}

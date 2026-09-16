@@ -25,7 +25,10 @@ if (!key) {
 const wallet = new Wallet(key);
 console.log("signer address:", wallet.address);
 
-const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const USDC = process.env["BASE_USDC_ADDRESS"]?.trim()
+  || (process.argv.includes("--sepolia")
+    ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
 const erc20 = [
   "function balanceOf(address) view returns (uint256)",
   "function decimals() view returns (uint8)",
