@@ -1,11 +1,15 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
-import { Boxes, FileSearch, History, Radar, GitBranch, Menu, X, Bot, Coins, Code2 } from "lucide-react";
+import { Boxes, FileSearch, History, Radar, GitBranch, Menu, X } from "lucide-react";
 import { WorkspaceAuthShell } from "@/components/app/WorkspaceAuthShell";
 import { getNavCounts } from "@/lib/orchestrator/nav-counts";
 
 type NavNote = string | number | null;
 
+/**
+ * Business workspace only. Agent roster, connector spec and settlement
+ * live on the public developer chapter (/developers).
+ */
 const workspaceNav = [
   { to: "/app", label: "Intelligence", icon: Radar, exact: true, note: "command" as NavNote },
   {
@@ -24,24 +28,6 @@ const workspaceNav = [
   },
   { to: "/app/supply", label: "Supply", icon: Boxes, exact: false, note: null as NavNote },
   { to: "/app/evidence", label: "Evidence", icon: FileSearch, exact: false, note: null as NavNote },
-] as const;
-
-const networkNav = [
-  { to: "/app/agents", label: "Agents", icon: Bot, exact: false, note: null as NavNote },
-  {
-    to: "/app/contributions",
-    label: "Contributions",
-    icon: Coins,
-    exact: false,
-    note: "earn" as NavNote,
-  },
-  {
-    to: "/app/developers",
-    label: "Developer",
-    icon: Code2,
-    exact: false,
-    note: "spec" as NavNote,
-  },
 ] as const;
 
 /** Live counts from the server; applied to matching nav items by path. */
@@ -122,10 +108,6 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
     <div className="app-nav-stack">
       <p className="app-nav-caption">Workspace</p>
       <NavLinkList items={workspaceNav} liveNotes={liveNotes} onNavigate={onNavigate} />
-      <div className="app-nav-later">
-        <p className="app-nav-caption">Network layer</p>
-        <NavLinkList items={networkNav} liveNotes={liveNotes} onNavigate={onNavigate} />
-      </div>
     </div>
   );
 }
@@ -152,9 +134,6 @@ function TopbarSection() {
     ["/app/recent", "Recent enquiries"],
     ["/app/supply", "Supply"],
     ["/app/evidence", "Evidence"],
-    ["/app/agents", "Agents"],
-    ["/app/contributions", "Contributions"],
-    ["/app/developers", "Developer"],
   ];
   const pathname = useLocation({ select: (l) => l.pathname });
   if (pathname.startsWith("/app/opportunities")) {

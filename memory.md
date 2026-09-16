@@ -100,4 +100,7 @@ Local settlements replaced from chain weights only (no fallback).
 - `stockintel-orchestrator` also runs on the same box and can steal Newintel inquiries from the shared `inquiries` table.
 - Fix: `src/lib/orchestrator/grid.ts` port-band filter + `agents.grid` / `inquiries.product`; Newintel orchestrator only takes `product=newintel`.
 - Report soft-parse so a schema drift no longer looks like "nothing came back".
+- **URL**: `stockintelislive.vercel.app` is the **stockintel** Vercel project alias. Newintel production is `https://newintel.vercel.app`. AWS `PUBLIC_SUBMIT_URL` + agent units now point there.
+- Newintel agents (8810-8819) were healthy but silent on the last run; StockIntel twins (8790-8799) produced every claim. StockIntel orchestrator still runs on the same box.
+
 

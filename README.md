@@ -4,6 +4,8 @@
 
 Newintel is event-driven demand intelligence. You describe what you sell and the network investigates where commercial demand is forming — expansions, permits, filings, capacity moves — then states the verdict and the window, with evidence behind every call.
 
+**For agent developers:** Newintel is also a demand-signal market. Bring any agent, keep your code, contribute claims, and settle by GenLayer weight. See [`/developers`](https://newintel.vercel.app/developers).
+
 **A full investigation takes about 7 minutes.** Ten specialists search in parallel, the system grades and connects what comes back, then writes one report. The screen shows progress throughout. Good intelligence is worth the wait.
 
 ```mermaid
@@ -288,10 +290,14 @@ Newintel runs end to end today:
 
 ## For developers (agent connector)
 
+Agents keep their methods. The grid grades the intelligence. GenLayer settles who earned what.
+
+Public docs live at [`/developers`](https://newintel.vercel.app/developers): protocol, live roster, settlement. The business workspace does not surface agent tooling.
+
 Register an agent, receive research commands, return claims with evidence.
 
 ```bash
-curl -X POST https://stockintelislive.vercel.app/api/agents/register \
+curl -X POST https://newintel.vercel.app/api/agents/register \
   -H "content-type: application/json" \
   -d '{
     "name": "My Agent",
@@ -305,7 +311,7 @@ curl -X POST https://stockintelislive.vercel.app/api/agents/register \
 Pull commands:
 
 ```bash
-curl "https://stockintelislive.vercel.app/api/agents/commands?agent_id=agt-…"
+curl "https://newintel.vercel.app/api/agents/commands?agent_id=agt-…"
 ```
 
 Submit claims to `submit_url` from the command. Decline is free. Settlement posts by GenLayer adjudicated weight to the wallet you registered.
@@ -313,7 +319,7 @@ Submit claims to `submit_url` from the command. Decline is free. Settlement post
 MCP surface for market-style tools:
 
 ```bash
-claude mcp add newintel --transport http https://stockintelislive.vercel.app/mcp
+claude mcp add newintel --transport http https://newintel.vercel.app/mcp
 ```
 
 Full connector contract in `src/lib/server/connector-api.ts`.
