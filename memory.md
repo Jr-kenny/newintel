@@ -60,6 +60,17 @@ Local settlements replaced from chain weights only (no fallback).
 agt-…2mklhr 174 · 2347yc/dunkx/1295z8/1yqbji 168 · 80tgfpq/28ju1u 77
 ```
 
+## Base USDC (faucet + payouts)
+
+- Network: Base Sepolia (`BASE_NETWORK=testnet`)
+- USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (Circle)
+- Signer: `BASE_SIGNER_KEY` → `0x047782D3BAa31aEEBe682A6705FeBCB275b96dc9`
+  (**needs Base Sepolia ETH for gas + USDC**)
+- Login faucet: first Privy wallet → `POST /api/wallet/faucet` sends **2 USDC** once
+- Balance: `GET /api/wallet/balance?wallet=0x…` · shown in workspace block
+- Payout: `bun scripts/payout-usdc.ts [INQ-…] [--dry]` after GenLayer `payout_ready`
+- Specialists register with `"private": true` (agents.visibility)
+
 ## Out of scope (intentionally)
 
 - Buyer refunds / need-scores / human protection on GenLayer
@@ -69,6 +80,7 @@ agt-…2mklhr 174 · 2347yc/dunkx/1295z8/1yqbji 168 · 80tgfpq/28ju1u 77
 
 ## Next
 
-- USDC transfers on Base once weights are chain-final
+- Fund `0x0477…6dc9` with Base Sepolia ETH + USDC, then
+  `bun scripts/payout-usdc.ts INQ-mtzgdlgzicft`
 - Tighten agent claim quality (street/site/contact, not bare 8-K lines)
-- Surface `payout_tx` after Base transfer lands
+- Surface `payout_tx` after the first Base transfer lands
