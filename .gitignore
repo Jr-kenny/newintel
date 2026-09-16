@@ -40,3 +40,7 @@ dist-ssr
 *.sw?
 .smoke-memory.db*
 .cache/
+.playwright-mcp/
+developers-*.png
+docs-preview.png
+

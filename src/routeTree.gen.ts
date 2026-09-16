@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as DevelopersRouteImport } from './routes/developers'
+import { Route as DocsRouteImport } from './routes/docs'
 import { Route as HowItWorksRouteImport } from './routes/how-it-works'
 import { Route as NetworkRouteImport } from './routes/network'
 import { Route as ProductRouteImport } from './routes/product'
@@ -39,6 +40,11 @@ const AppRoute = AppRouteImport.update({
 const DevelopersRoute = DevelopersRouteImport.update({
   id: '/developers',
   path: '/developers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HowItWorksRoute = HowItWorksRouteImport.update({
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/developers': typeof DevelopersRoute
+  '/docs': typeof DocsRoute
   '/how-it-works': typeof HowItWorksRoute
   '/network': typeof NetworkRoute
   '/product': typeof ProductRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/developers': typeof DevelopersRoute
+  '/docs': typeof DocsRoute
   '/how-it-works': typeof HowItWorksRoute
   '/network': typeof NetworkRoute
   '/product': typeof ProductRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/developers': typeof DevelopersRoute
+  '/docs': typeof DocsRoute
   '/how-it-works': typeof HowItWorksRoute
   '/network': typeof NetworkRoute
   '/product': typeof ProductRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/developers'
+    | '/docs'
     | '/how-it-works'
     | '/network'
     | '/product'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/developers'
+    | '/docs'
     | '/how-it-works'
     | '/network'
     | '/product'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/developers'
+    | '/docs'
     | '/how-it-works'
     | '/network'
     | '/product'
@@ -221,6 +233,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   DevelopersRoute: typeof DevelopersRoute
+  DocsRoute: typeof DocsRoute
   HowItWorksRoute: typeof HowItWorksRoute
   NetworkRoute: typeof NetworkRoute
   ProductRoute: typeof ProductRoute
@@ -248,6 +261,13 @@ declare module '@tanstack/react-router' {
       path: '/developers'
       fullPath: '/developers'
       preLoaderRoute: typeof DevelopersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/how-it-works': {
@@ -374,6 +394,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   DevelopersRoute: DevelopersRoute,
+  DocsRoute: DocsRoute,
   HowItWorksRoute: HowItWorksRoute,
   NetworkRoute: NetworkRoute,
   ProductRoute: ProductRoute,

@@ -81,6 +81,7 @@ export type SupplyView = {
 };
 
 export type AgentRow = {
+  id: string;
   name: string;
   type: "Prime" | "Independent";
   specialty: string;
@@ -92,6 +93,30 @@ export type AgentRow = {
   connectedAt: string;
   evidence: number;
   unique: number;
+};
+
+export type AgentDetail = AgentRow & {
+  paidUsd: number;
+  pendingUsd: number;
+  settlementCount: number;
+  lastPayoutAt: string | null;
+  lastPayoutTx: string | null;
+  recentClaims: {
+    claim: string;
+    company: string;
+    weight: number | null;
+    tier: string | null;
+    submittedAt: string;
+    inquiryId: string;
+  }[];
+  settlements: {
+    inquiryId: string;
+    weight: number;
+    amountUsd: number;
+    paid: boolean;
+    payoutTx: string | null;
+    createdAt: string;
+  }[];
 };
 
 export type ContributionTier = "discovery" | "confirmation" | "duplication";
@@ -369,11 +394,11 @@ export const listAgentsLive = createServerFn({ method: "POST" }).handler(
         ),
       );
       return {
+        id: a.id,
         name: a.name,
-        type:
-          a.id.startsWith("AGT-PRIME") || a.endpoint.includes("prime-layer")
-            ? "Prime"
-            : "Independent",
+        type: /:(?:881[0-9])\//.test(a.endpoint) || a.id.startsWith("AGT-PRIME") || a.endpoint.includes("prime-layer")
+          ? "Prime"
+          : "Independent",
         specialty: a.specialty || "general signal sweep",
         endpoint: a.endpoint,
         wallet: `${a.wallet.slice(0, 6)}…${a.wallet.slice(-4)}`,
@@ -463,3 +488,101 @@ export const listSettlementsLive = createServerFn({ method: "POST" }).handler(
     }));
   },
 );
+
+const agentIdSchema = z.object({ id: z.string().min(2) });
+
+/**
+ * Public developer-facing agent card: roster stats plus earnings and recent
+ * claims. No private method data. Earnings come from GenLayer settlements.
+ */
+export const getAgentDetail = createServerFn({ method: "POST" })
+  .validator((input: unknown) => agentIdSchema.parse(input))
+  .handler(async ({ data }): Promise<AgentDetail | null> => {
+    await ensureSchema();
+    const [agent] = await db.select().from(agents).where(eq(agents.id, data.id));
+    if (!agent || !isNewintelAgent(agent)) return null;
+
+    const [claimRows, settlementRows] = await Promise.all([
+      db
+        .select()
+        .from(claims)
+        .where(eq(claims.agentId, agent.id))
+        .orderBy(desc(claims.submittedAt))
+        .limit(25),
+      db
+        .select()
+        .from(settlements)
+        .where(eq(settlements.agentId, agent.id))
+        .orderBy(desc(settlements.createdAt))
+        .limit(25),
+    ]);
+
+    const graded = claimRows.filter((c) => c.weight != null);
+    const hosts = new Set(
+      graded.flatMap((c) =>
+        (JSON.parse(c.evidenceJson || "[]") as { source: string }[])
+          .map((e) => hostOf(e.source))
+          .filter(Boolean),
+      ),
+    );
+    const paid = settlementRows.filter((s) => Boolean(s.payoutTx));
+    const pending = settlementRows.filter((s) => !s.payoutTx);
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      type:
+        agent.id.startsWith("AGT-PRIME") ||
+        agent.endpoint.includes("prime-layer") ||
+        /:(?:881[0-9])\//.test(agent.endpoint)
+          ? "Prime"
+          : "Independent",
+      specialty: agent.specialty || "general signal sweep",
+      endpoint: agent.endpoint,
+      wallet: `${agent.wallet.slice(0, 6)}…${agent.wallet.slice(-4)}`,
+      agenticId: agent.agenticId,
+      status: agent.status,
+      reliability: Math.round(agent.reliability * 100) / 100,
+      connectedAt: agent.createdAt,
+      evidence: graded.length,
+      unique:
+        graded.length > 0
+          ? Math.min(
+              100,
+              Math.round(
+                (hosts.size /
+                  Math.max(
+                    graded.reduce(
+                      (s, c) => s + (JSON.parse(c.evidenceJson || "[]") as unknown[]).length,
+                      1,
+                    ),
+                    1,
+                  )) *
+                  100,
+              ),
+            )
+          : 0,
+      paidUsd: Math.round(paid.reduce((s, r) => s + r.amountUsd, 0) * 100) / 100,
+      pendingUsd: Math.round(pending.reduce((s, r) => s + r.amountUsd, 0) * 100) / 100,
+      settlementCount: settlementRows.length,
+      lastPayoutAt: paid[0]?.createdAt ?? null,
+      lastPayoutTx: paid[0]?.payoutTx ?? null,
+      recentClaims: claimRows.slice(0, 12).map((c) => ({
+        claim: c.claim.slice(0, 180),
+        company: c.company,
+        weight: c.weight,
+        tier: c.tier,
+        submittedAt: c.submittedAt,
+        inquiryId: c.inquiryId,
+      })),
+      settlements: settlementRows.map((s) => ({
+        inquiryId: s.inquiryId,
+        weight: s.weight,
+        amountUsd: s.amountUsd,
+        paid: Boolean(s.payoutTx),
+        payoutTx: s.payoutTx,
+        createdAt: s.createdAt,
+      })),
+    };
+  });
+
