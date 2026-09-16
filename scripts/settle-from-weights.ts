@@ -19,6 +19,7 @@ import {
   recordFinding,
   recordFinal,
 } from "../src/lib/genlayer/judge";
+import { agentMemoryStats } from "../src/lib/memory";
 
 const inquiryId = process.argv[2];
 if (!inquiryId) {
@@ -45,6 +46,16 @@ const packages = Array.from(byAgent.values());
 console.log("judge", judgeAddress(), "agents", packages.length);
 console.log("1/3 record_finding per agent (retry until ACCEPTED)…");
 
+// Sibyl reliability ledger — past findings that were recalled and held
+// earn the agent extra score inside the judge.
+const memStats = await agentMemoryStats(packages.map((p) => p.agent_id));
+console.log(
+  "sibyl:",
+  Array.from(memStats.values())
+    .map((s) => `${s.agentId.slice(0, 12)} r=${s.verifiedRecalls} d=${s.discoveries}`)
+    .join(" · ") || "(cold)",
+);
+
 let findingOk = 0;
 for (const p of packages) {
   // one aggregated observation per agent
@@ -66,6 +77,8 @@ for (const p of packages) {
       event: events.join(" | ").slice(0, 500),
       sources: Array.from(new Set(sources)).slice(0, 5),
       observed: p.observations[0]?.observed ?? new Date().toISOString().slice(0, 10),
+      verified_recalls: memStats.get(p.agent_id)?.verifiedRecalls ?? 0,
+      discoveries: memStats.get(p.agent_id)?.discoveries ?? 0,
     },
   });
   if (ok) findingOk++;

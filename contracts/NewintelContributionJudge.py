@@ -252,7 +252,10 @@ class NewintelContributionJudge(gl.Contract):
         submissions: list,
         final_intel: typing.Any,
     ) -> typing.Any:
-        """Integer milli-weights (sum 1000). Contact/company > location > event."""
+        """Integer milli-weights (sum 1000). Contact/company > location > event.
+        Sibyl reliability: verified_recalls add bonus so an agent whose past
+        finding was recalled and still holds earns more on the next cycle.
+        """
         final_blob = str(final_intel).lower()
         try:
             final_blob = json.dumps(final_intel, ensure_ascii=False).lower()
@@ -290,6 +293,19 @@ class NewintelContributionJudge(gl.Contract):
                         score = score + 30
                     if len(event) >= 8 and event[:8].lower() in final_blob:
                         score = score + 15
+                    # Sibyl: past finding was recalled and re-checked.
+                    recalls = obs.get("verified_recalls")
+                    if isinstance(recalls, int):
+                        if recalls > 3:
+                            recalls = 3
+                        if recalls > 0:
+                            score = score + (recalls * 20)
+                    discoveries = obs.get("discoveries")
+                    if isinstance(discoveries, int):
+                        if discoveries > 5:
+                            discoveries = 5
+                        if discoveries > 0:
+                            score = score + (discoveries * 5)
                 j = j + 1
             scores[agent_id] = score
             i = i + 1
@@ -317,7 +333,7 @@ class NewintelContributionJudge(gl.Contract):
         return {
             "inquiry_id": inquiry_id,
             "weights": weights,
-            "note": "deterministic milli-weights (sum 1000)",
+            "note": "deterministic milli-weights (sum 1000) + sibyl reliability",
         }
 
     @gl.public.view

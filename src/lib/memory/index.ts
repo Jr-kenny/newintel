@@ -455,4 +455,48 @@ export async function markFollowupDispatched(followupId: number): Promise<void> 
   }
 }
 
+export type AgentMemoryStats = {
+  agentId: string;
+  verifiedRecalls: number;
+  discoveries: number;
+  confirmations: number;
+  cycles: number;
+  weightSum: number;
+};
+
+/**
+ * Reliability ledger for GenLayer settlement. An agent that already
+ * proved a past finding ("yo I remember you" → re-checked and held)
+ * carries that history into the next adjudication.
+ */
+export async function agentMemoryStats(
+  agentIds?: string[],
+): Promise<Map<string, AgentMemoryStats>> {
+  const out = new Map<string, AgentMemoryStats>();
+  try {
+    await ensureSchema();
+    const rows = await db.select().from(memoryAgentHistory);
+    for (const row of rows) {
+      if (agentIds && !agentIds.includes(row.agentId)) continue;
+      const prev = out.get(row.agentId) ?? {
+        agentId: row.agentId,
+        verifiedRecalls: 0,
+        discoveries: 0,
+        confirmations: 0,
+        cycles: 0,
+        weightSum: 0,
+      };
+      prev.verifiedRecalls += row.verifiedRecalls ?? 0;
+      prev.discoveries += row.discoveryCount ?? 0;
+      prev.confirmations += row.confirmationCount ?? 0;
+      prev.cycles += 1;
+      prev.weightSum += row.weightSum ?? 0;
+      out.set(row.agentId, prev);
+    }
+  } catch (err) {
+    console.error("memory.agentMemoryStats failed:", err);
+  }
+  return out;
+}
+
 export { newId };

@@ -124,6 +124,9 @@ export async function recordFinding(input: {
     event: string;
     sources: string[];
     observed: string;
+    /** Sibyl reliability ledger — scored by the judge. */
+    verified_recalls?: number;
+    discoveries?: number;
   };
 }): Promise<boolean> {
   const { ok } = await writeWithRetry("record_finding", [

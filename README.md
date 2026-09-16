@@ -14,6 +14,8 @@ flowchart LR
     EVT --> V[Verification and grading]
     V --> D[Dossier]
     D --> OP[Ranked opportunities]
+    OP --> GL[GenLayer adjudication]
+    GL --> USDC[Base USDC payouts]
 ```
 
 ## The problem it solves
@@ -48,11 +50,21 @@ flowchart LR
     V2 --> SC[Scoring]
     SC --> SYN[Synthesis]
     SYN --> OPP[Ranked opportunity]
+    OPP --> JUDGE[GenLayer judge]
 ```
 
 The flow is:
 
-**Question → demand hypotheses → specialist investigation → signals → evidence → verification → commercial intent → ranked opportunities**
+**Question → demand hypotheses → specialist investigation → signals → evidence → verification → commercial intent → ranked opportunities → GenLayer settlement**
+
+### Two halves, one product
+
+| Half | What it is | Why it matters |
+|---|---|---|
+| **Newintel app** | Orchestrator, specialists, Sibyl memory, report | The buyer gets the intelligence |
+| **GenLayer judge** | Intelligent Contract that adjudicates agent contribution | The agent network gets paid fairly, onchain |
+
+The business path never waits on chain. The report is delivered from the orchestrator as soon as it is written. GenLayer is the **settlement layer for the agent grid** — the part of the stack that decides who actually contributed, in integer weights, under validator consensus.
 
 ## How it thinks
 
@@ -83,7 +95,36 @@ Each specialist is bounded to a type of intelligence. Together they cover differ
 - **Synthesis** - connecting evidence into coherent theses
 - **Prime Signals** - first-party connector covering Google News RSS, GDELT and SEC EDGAR filings
 
+Specialists can register as **private agents**. Private specialists keep their method off public listings but still hear every command and settle by weight like everyone else. That is the developer story: bring your own scraper, private API, or model pipeline. The evidence is what gets graded.
+
 The orchestrator assigns work. Specialists return structured claims. The orchestrator decides what becomes an assessment, what needs verification, and what triggers further investigation.
+
+### Sibyl memory — the network gets smarter
+
+Newintel does not restart at zero on every inquiry. Sibyl is a persistent memory substrate with six stores:
+
+1. **Source Registry** — fingerprints of every source ever cited
+2. **Claim Store** — claims about companies, open / confirmed / expired
+3. **Reliability Ledger** — per-agent contribution history
+4. **Demand Graph nodes** — companies accumulating signal strength
+5. **Inquiry Store** — past inquiries for similarity matching
+6. **Follow-up Queue** — scheduled re-verifications ("yo I remember you")
+
+On every new run the orchestrator **recalls first**: similar past inquiries, known claims, and due follow-ups go into the dispatch brief. The agent that originally sourced a claim is asked to re-check it. When that re-check holds, Sibyl marks a **verified recall**.
+
+That verified recall is not just a local score. It is written into the GenLayer finding. The judge treats it as reliability: an agent whose past intelligence was remembered and still holds earns more weight on the next cycle. Memory compounds into payout share.
+
+```mermaid
+flowchart TB
+    R1[Run 1] --> C[Agent finds company X]
+    C --> M[Sibyl stores claim + follow-up]
+    M --> R2[Run 2 recalls: check X again]
+    R2 --> A[Same agent re-checks]
+    A --> H[Claim still holds]
+    H --> V[verified_recalls++]
+    V --> J[GenLayer judge weights + reliability]
+    J --> P[Higher USDC share]
+```
 
 ### The exposure graph
 
@@ -101,10 +142,6 @@ Hyperscale AI buildout
 
 The graph holds Company → Customers → Suppliers → Partners → Projects → Industries → Related assets. An event three levels away from the watched ticker can still surface as a ranked assessment without anyone ever searching the ticker directly.
 
-### Direct and indirect signals
-
-A **direct** signal: NVIDIA announces a major customer. An **indirect** signal: Microsoft announces a massive AI data-center expansion Microsoft → infrastructure → GPU demand → NVIDIA → TSMC. Every assessment carries its impact path, with evidence supporting each edge.
-
 ### Evidence
 
 Every meaningful claim carries evidence and a source. The system keeps a clear boundary between what a source confirms and what the system infers from it. A source date, URL and observed item support each claim, and the readout shows both the fact and the inference so the reader can follow the reasoning.
@@ -113,33 +150,46 @@ Every meaningful claim carries evidence and a source. The system keeps a clear b
 
 Five specialists citing the same article count as one source, not five independent confirmations. Source clustering canonicalizes URLs and groups citations of the same underlying document into a single cluster. Independent sources increase confidence. Repeated citations do not.
 
-### Recursive investigation
+## GenLayer — where the agent grid is judged
 
-A discovery can trigger controlled follow-up investigation. Finding a data-center expansion, for example, can lead to an investigation of the contractors, the equipment suppliers, or the power arrangements. Recursion is bounded by depth, source count and token budget, and terminates on diminishing returns or duplicate detection.
+GenLayer is not a side feature. It is the **settlement oracle for the agent network** — the surface this project submits to for contribution judgment.
 
-### Thesis first, price second
+### Why GenLayer
 
-The sequence is strict:
+Agent contribution is subjective. Two agents can find the same expansion through different evidence. A deterministic hash cannot decide who added more commercial value. GenLayer Intelligent Contracts run under Optimistic Democracy: a leader proposes, validators vote, appeals can challenge, and the verdict only pays after finality.
 
-**World → Event → Economic impact → Exposure → Thesis → Market price**
+We use that for **agent payouts only**. Buyers never wait on consensus.
 
-Never the reverse. The thesis is formed off-market and independently then contextualized against the market. Otherwise you build a momentum bot wearing an intelligence costume.
+### The judge contract
 
-### The market check (Binance Agent OS)
+Network: **Bradbury testnet**. Judge: `0x10713BFfC2D1811eE5F75d453534aFDE330AEaF8`.
 
-Only after the thesis exists, Newintel queries live market context through the Binance Agent OS MCP server: current price, recent movement, volume, and the user's watched position inside a permissioned sub-account. Read-only. No withdrawals, ever. The agent proposes; the trader decides.
+| Method | What it does |
+|---|---|
+| `record_finding` | Store one agent observation (JSON, includes Sibyl reliability) |
+| `record_final` | Store the final intelligence used for matching |
+| `adjudicate` | Deterministic milli-weights (sum 1000) under consensus |
+| `get_verdict` / `payout_ready` | Read back weights and the hard payout gate |
+| `set_payout_hook` / `request_payout` | Web-oracle: POST the ready verdict to the Base relayer |
 
-A positioning gauge (`src/lib/binance/market-test.ts`) measures where price already sits: range position, 14-session run, daily wobble. It emits measurements, never verdicts. It is built to grow: reverse-DCF and peer-relative checks slot in as functions beside it once fundamentals arrive.
+Weights are **integer milli-shares** (sum 1000). No LLM inside `adjudicate` — LLM scoring timed out and crashed GenVM. Deterministic integer math keeps validators in agreement.
 
-Typical readout line:
+### Lifecycle
 
-> NVDA up 2% despite a fresh hyperscale expansion announcement; the information may not be fully reflected in the observed price. Related exposure: MU, DELL, AVGO.
+```
+claim POST        → record_finding   (with verified_recalls from Sibyl)
+report ready      → record_final     (business already served)
+settlement        → adjudicate       → milli-weights
+before payout     → payout_ready == true
+inter-comms       → request_payout   → POST relayer under consensus
+Base Sepolia      → USDC to agent wallets
+```
 
-### The output: Market Impact Assessment
+The relayer (`POST /api/wallet/relay-payout`) **re-reads** `get_verdict` and `payout_ready` from Bradbury. The HTTP body is never trusted alone.
 
-Not buy/sell. Each assessment carries impact, magnitude, confidence, event freshness, observed price reaction, related exposures, the reasoning, and what could invalidate it. An analytical assessment, not a prediction.
+### Login faucet
 
-A note on voice: the live application speaks only in outcomes. Theses, evidence, confidence. The machinery behind them, ten specialists, orchestration, clustering, grading, lives here in this document and in `soul.md`, where it belongs. A trader should never need to know what an agent is.
+Every new workspace wallet gets **2 USDC** on Base Sepolia once — enough for two paid inquiry runs. Circle USDC on Base Sepolia: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
 
 ## Technologies we used
 
@@ -167,18 +217,16 @@ Intelligence:
 - Evidence graph
 - Exposure hypothesis generation
 - Recursive investigation
-- `soul.md` synthesis
+- Sibyl memory (six stores)
 
-Market layer:
+Settlement and identity:
 
-- Binance Agent OS MCP read-only market context (prices, volume, positions)
-- LLM grading of claim relevance and evidence quality, plus LLM connection of evidence into causal chains
+- **GenLayer** Intelligent Contracts (Bradbury) — contribution adjudication
+- Optimistic Democracy consensus for agent payout weights
+- **Base Sepolia USDC** — agent wallet transfers and the login faucet
+- GenLayer web-oracle inter-comms (`request_payout` → Base relayer)
 - ERC-7857 Agentic ID identity for participating specialists
-- Sibyl memory intelligence that compounds across inquiries instead of restarting at zero
-
-## Sibyl memory layer
-
-Newintel's intelligence compounds across watches instead of restarting at zero on every inquiry. A persistent memory substrate organized as six stores source registry, claim store, reliability ledger, exposure graph nodes, inquiry store, follow-up queue means the second watch on a ticker is better than the first: warm briefs, targeted re-checks, and claims that re-verify themselves without anyone asking.
+- LLM grading of claim relevance and evidence quality, plus LLM connection of evidence into causal chains
 
 ## Challenges we ran into
 
@@ -186,13 +234,17 @@ Newintel's intelligence compounds across watches instead of restarting at zero o
 
 A distributed network can generate more data without generating better intelligence. Specialization, structured claims, orchestration and verification keep it honest: one surface per specialist, one common claim shape, and the orchestrator decides what advances.
 
+### Fair payout for subjective contribution
+
+Contribution quality is not a hash. GenLayer Optimistic Democracy lets validators agree on milli-weights without putting an LLM inside the critical path. Deterministic scoring (contact > company > location > event, plus Sibyl reliability) keeps consensus stable while still rewarding the agents that actually moved the report.
+
+### Memory that pays for itself
+
+Recall is useless if it does not change outcomes. Sibyl recall changes dispatch briefs, routes follow-ups to the original agent, and — when the re-check holds — feeds `verified_recalls` into the GenLayer judge so reliability compounds into payout share.
+
 ### Duplicate sources
 
 Multiple specialists independently finding the same article inflates confidence if unhandled. Source clustering canonicalizes and groups citations of the same document so confidence grows only with genuinely independent corroboration.
-
-### Thesis discipline
-
-It is tempting to let price action write the narrative. The pipeline enforces the order instead: world first, market last. Anything that cannot show an exposure path from event to ticker does not become an assessment.
 
 ### Depth vs speed
 
@@ -208,47 +260,63 @@ Starting from the situations that move stocks produces stronger intelligence tha
 
 Repeated citations are not corroboration. Confidence should increase with genuinely independent sources, not with the number of times one source is reported.
 
-### Exposure context matters
+### Settlement must be boring
 
-A signal becomes tradable when combined with the impact path, the freshness, the observed market reaction and the invalidation conditions. Context turns a mention into a thesis.
-
-### Facts and inference must remain separate
-
-Show what a source confirms and what the system concludes as two distinct things. That boundary makes the output verifiable and the reasoning inspectable.
+The exciting part of a judged agent economy is the judgment. The payout path should be fail-closed, integer, and re-verifiable. If `payout_ready` is false, nothing moves.
 
 ### Intelligence compounds
 
-Entities, relationships, events and evidence accumulate into a picture of forming exposure rather than isolated answers. The evidence graph makes that accumulation useful over time.
+Entities, relationships, events and evidence accumulate into a picture of forming exposure rather than isolated answers. Sibyl plus GenLayer makes that accumulation both useful and paid.
 
 ## Status
 
 Newintel runs end to end today:
 
-- Natural language watch requests with exposure hypothesis generation
-- Ten first-party specialists investigating in parallel
+- Natural language watch / demand requests with hypothesis generation
+- Ten first-party specialists investigating in parallel (public or private registration)
 - Structured claims with evidence and sources
 - Source clustering and deduplication
 - Deterministic grading plus LLM grading of relevance and evidence quality
 - Bounded recursive follow-up investigation
-- Evidence and exposure graphs with persisted causal chains
-- One intelligence report per run: executive first, evidence with our read, synthesis chains, four horizons, scenarios with invalidation, bottom line
-- Read-only market context via Binance Agent OS MCP, persisted per inquiry
-- Positioning gauge feeding the market test; verdicts stay with the thesis
-- Outcome reflection (`bun scripts/reflect-outcomes.ts`): past verdicts judged against later price action, lessons written back to Sibyl memory
+- One intelligence report per run
+- **Sibyl memory** across inquiries (recall → follow-up → verified recall)
+- **GenLayer judge** on Bradbury: record → adjudicate → payout_ready
+- **Base Sepolia USDC** agent payouts gated on chain verdicts
+- **2 USDC login faucet** for new workspace wallets
+- GenLayer web-oracle `request_payout` → `/api/wallet/relay-payout` inter-comms
 - ERC-7857 identities for participating specialists
-- Sibyl memory across inquiries
 
-Built for Track A of the Binance Agent OS Mini Hackathon.
+## For developers (agent connector)
 
-## For agents (MCP + HTTP)
-
-Newintel runs next to the Binance MCP server inside your own agent session. Add it once:
+Register an agent, receive research commands, return claims with evidence.
 
 ```bash
-claude mcp add newintel --transport http https://newintelislive.vercel.app/mcp
+curl -X POST https://stockintelislive.vercel.app/api/agents/register \
+  -H "content-type: application/json" \
+  -d '{
+    "name": "My Agent",
+    "specialty": "what it sources well",
+    "endpoint": "pull",
+    "wallet": "0xYourPayoutWallet",
+    "private": true
+  }'
 ```
 
-VS Code picks up both servers from the repo's `.vscode/mcp.json`. Cursor takes the same URL as a Streamable HTTP server. Then call `newintel_read` for market context, `newintel_assess` for the thesis, `newintel_clusters` for evidence without verdicts, `newintel_thesis_changes` for what moved, `newintel_conflicting` for the counter-case, `newintel_evidence` to drill into one thread, and `newintel_investigate` plus `newintel_inquiry` to run the full ten-specialist grid. Pass your own Binance tool output as `binance_market_data` and that leg reports caller-supplied. Every tool has an HTTP twin under `/api/market`. Full contract in `skills/newintel/SKILL.md`.
+Pull commands:
+
+```bash
+curl "https://stockintelislive.vercel.app/api/agents/commands?agent_id=agt-…"
+```
+
+Submit claims to `submit_url` from the command. Decline is free. Settlement posts by GenLayer adjudicated weight to the wallet you registered.
+
+MCP surface for market-style tools:
+
+```bash
+claude mcp add newintel --transport http https://stockintelislive.vercel.app/mcp
+```
+
+Full connector contract in `src/lib/server/connector-api.ts`.
 
 ## Built by Prime Isles
 

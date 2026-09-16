@@ -19,6 +19,13 @@ export type AgentObservation = {
   event: string;
   sources: string[];
   observed: string;
+  /**
+   * Sibyl reliability ledger — how often this agent's past findings were
+   * recalled and held. The judge uses it as a score multiplier, not a
+   * substitute for evidence in this cycle.
+   */
+  verified_recalls?: number;
+  discoveries?: number;
 };
 
 export type AgentSubmissionPackage = {
