@@ -60,10 +60,13 @@ Local settlements replaced from chain weights only (no fallback).
 
 ## Production
 
-- App: `https://stockintelislive.vercel.app` (project `primeisles/stockintel`)
+- App: `https://stockintelislive.vercel.app` → project `primeisles/newintel`
+- Git: **connected** to `Jr-kenny/newintel` (pushes auto-deploy)
 - Judge: `0x10713BFfC2D1811eE5F75d453534aFDE330AEaF8` (Sibyl scoring)
 - Hook: `https://stockintelislive.vercel.app/api/wallet/relay-payout`
-- Env on Vercel: BASE_* + GENLAYER_* set
+- DB: `/tmp` file fallback (ephemeral). Need Turso `DATABASE_URL` for shared state
+- Arc→Base CCTP: `bun scripts/bridge-arc-to-base.ts` after sending Arc USDC to sponsor
+- Faucet UI: no raw reverts; wallet is copyable; receive needs no user gas
 
 ## Sibyl → GenLayer scoring
 
