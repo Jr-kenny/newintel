@@ -37,8 +37,21 @@ ONLY agent USDC payouts wait on payout_ready
 
 ## Deploy
 
-Bradbury (current CLI network). Latest address is in `.env` as
-`GENLAYER_JUDGE_ADDRESS`.
+Bradbury (live settlement path). Address in `.env` → `GENLAYER_JUDGE_ADDRESS`.
+
+Studio Next (chain 61997, `studio-dev`): a Studio Next build lives in
+`NewintelContributionJudge.studionext.py`. Use genlayer CLI `0.40.0-rc.3`:
+
+```
+npx genlayer@0.40.0-rc.3 network set studio-dev
+npx genlayer@0.40.0-rc.3 estimate-fees --json
+npx genlayer@0.40.0-rc.3 deploy --contract ./contracts/NewintelContributionJudge.studionext.py \
+  --fees '<estimate.json>' --fee-value <estimate.feeValue>
+```
+
+Studio Next preview has been flaking: transactions can ACCEPT while leader
+execution returns `FINISHED_WITH_ERROR`, so no contract address is created.
+Retry when the preview is healthy. Production settlement stays on Bradbury.
 
 1. Claim POST → `record_finding`
 2. After report → `record_final` (same package the business got — matching input only)
