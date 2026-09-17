@@ -37,21 +37,21 @@ ONLY agent USDC payouts wait on payout_ready
 
 ## Deploy
 
-Bradbury (live settlement path). Address in `.env` → `GENLAYER_JUDGE_ADDRESS`.
+**Studionet (live Studio judge):** `0x75e41A7cbB0c80825e20E22f528ea2BebBB10Fa4`
 
-Studio Next (chain 61997, `studio-dev`): a Studio Next build lives in
-`NewintelContributionJudge.studionext.py`. Use genlayer CLI `0.40.0-rc.3`:
+Deploy with Python `genlayer-py` (not the Node CLI fee path):
 
 ```
-npx genlayer@0.40.0-rc.3 network set studio-dev
-npx genlayer@0.40.0-rc.3 estimate-fees --json
-npx genlayer@0.40.0-rc.3 deploy --contract ./contracts/NewintelContributionJudge.studionext.py \
-  --fees '<estimate.json>' --fee-value <estimate.feeValue>
+uv venv /tmp/glpy --python 3.12
+uv pip install --python /tmp/glpy/bin/python genlayer-py
+/tmp/glpy/bin/python scripts/deploy-studio-py.py
 ```
 
-Studio Next preview has been flaking: transactions can ACCEPT while leader
-execution returns `FINISHED_WITH_ERROR`, so no contract address is created.
-Retry when the preview is healthy. Production settlement stays on Bradbury.
+The contract must keep the `Depends` py-genlayer header. Without it Studio returns `invalid_contract`.
+
+Bradbury remains the production settlement path. Address in `.env` → `GENLAYER_JUDGE_ADDRESS`.
+
+Studio Next preview (chain 61997) is separate and flaky. Use studionet for the submission address unless the form hard-requires 61997.
 
 1. Claim POST → `record_finding`
 2. After report → `record_final` (same package the business got — matching input only)
